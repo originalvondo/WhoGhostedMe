@@ -1,0 +1,47 @@
+/* popup.css */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  width: 320px;
+  height: 440px;
+  background: #fafafa;
+}
+
+.container {
+  padding: 12px;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  text-align: center;
+  color: #333;
+}
+
+#status {
+  text-align: center;
+  margin-top: 20px;
+  color: #666;
+}
+
+#list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+#list li {
+  margin: 6px 0;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+#list li a {
+  text-decoration: none;
+  color: #111;
+  font-weight: 500;
+}

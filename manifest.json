@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "WhoDoesn'tFollowMe",
+  "version": "1.0",
+  "description": "One‑click list of Instagram users who don’t follow you back.",
+  "permissions": ["scripting", "activeTab"],
+  "host_permissions": ["https://www.instagram.com/*"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.instagram.com/*/"],
+      "js": ["content.js"]
+    }
+  ]
+}
