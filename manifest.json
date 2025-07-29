@@ -1,20 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Instagram Non-Follower Checker",
-  "description": "Check who doesn't follow you back on Instagram in one click.",
+  "name": "WhoGhostedMe",
   "version": "1.0",
-  "permissions": ["scripting", "tabs"],
-  "host_permissions": ["https://www.instagram.com/*"],
+  "description": "Find out who doesn't follow you back on Instagram.",
+  "permissions": ["scripting", "tabs", "activeTab"],
   "action": {
     "default_popup": "popup.html"
   },
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
     {
-      "matches": ["https://www.instagram.com/*"],
-      "js": ["content.js"]
+      "matches": ["*://www.instagram.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ]
 }

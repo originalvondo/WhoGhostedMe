@@ -1,50 +1,61 @@
 document.addEventListener("DOMContentLoaded", () => {
   const status = document.getElementById("status");
-  const listContainer = document.getElementById("list");
-  const errorDiv = document.getElementById("error");
+  const list = document.getElementById("nonFollowersList");
   const copyBtn = document.getElementById("copyBtn");
 
-  chrome.runtime.sendMessage({ type: "getActiveTab" }, (response) => {
-    const tab = response.tab;
-    if (!tab || !tab.url.includes("instagram.com")) {
-      status.textContent = "Please go to an Instagram profile page.";
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs || !tabs[0] || !tabs[0].url.includes("instagram.com/")) {
+      status.textContent = "Please open an Instagram profile.";
       return;
     }
 
-    chrome.tabs.sendMessage(tab.id, { type: "getNonFollowers" }, (res) => {
+    chrome.tabs.sendMessage(tabs[0].id, { type: "getNonFollowers" }, (response) => {
       if (chrome.runtime.lastError) {
-        errorDiv.textContent = "Content script not responding.";
+        status.textContent = "Error: No response from content script.";
+        console.error("Runtime error:", chrome.runtime.lastError.message);
         return;
       }
 
-      if (res.error) {
-        errorDiv.textContent = "Error: " + res.error;
+      if (response?.error) {
+        status.textContent = "Error: " + response.error;
+        console.error("Script error:", response.error);
         return;
       }
 
-      const { nonFollowers, username } = res;
-      status.textContent = `Non-followers for ${username}: ${nonFollowers.length}`;
+      const { nonFollowers, username } = response;
 
-      let formattedList = "";
+      if (!nonFollowers || nonFollowers.length === 0) {
+        status.textContent = `Everyone follows @${username} back! 🎉`;
+        return;
+      }
 
-      nonFollowers.forEach((user) => {
-        const link = `https://instagram.com/${user.username}`;
-        const div = document.createElement("div");
-        div.className = "user";
-        div.innerHTML = `<a href="${link}" target="_blank">${user.username}</a>`;
-        listContainer.appendChild(div);
+      let clipboardText = "";
+      let count = 0;
 
-        formattedList += `Username: ${user.username}\nProfile link: ${link}\n\n`;
-      });
+      status.textContent = `Non-Followers found: ${count}`;
+      const interval = setInterval(() => {
+        if (count >= nonFollowers.length) {
+          clearInterval(interval);
+          status.textContent = `Non-Followers found: ${nonFollowers.length}`;
+          copyBtn.style.display = "block";
+          return;
+        }
 
-      copyBtn.addEventListener("click", () => {
-        navigator.clipboard.writeText(formattedList).then(() => {
-          copyBtn.textContent = "Copied!";
-          setTimeout(() => {
-            copyBtn.textContent = "Copy list to clipboard";
-          }, 1500);
-        });
-      });
+        const user = nonFollowers[count];
+        const li = document.createElement("li");
+        li.innerHTML = `<a href="https://instagram.com/${user.username}" target="_blank">@${user.username}</a>`;
+        list.appendChild(li);
+
+        clipboardText += `Username: ${user.username}\nProfile link: https://instagram.com/${user.username}\n\n`;
+        status.textContent = `Non-Followers found: ${count + 1}`;
+        count++;
+      }, 100);
+      
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(clipboardText.trim());
+        copyBtn.textContent = "Copied!";
+        setTimeout(() => (copyBtn.textContent = "Copy List to Clipboard"), 2000);
+      };
     });
   });
 });

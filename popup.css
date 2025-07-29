@@ -45,3 +45,7 @@ h2 {
   color: #111;
   font-weight: 500;
 }
+
+#copyBtn {
+  margin-bottom: 8px;
+}

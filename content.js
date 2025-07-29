@@ -30,6 +30,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let after = null;
         let has_next = true;
 
+        // Fetch followers
         while (has_next) {
           const res = await fetch(
             `https://www.instagram.com/graphql/query/?query_hash=c76146de99bb02f6415203be841dd25a&variables=` +
@@ -55,6 +56,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           );
         }
 
+        // Fetch followings
         after = null;
         has_next = true;
 
