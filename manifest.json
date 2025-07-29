@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WhoGhostedMe",
   "version": "1.0",
-  "description": "Ever wondered who ghosted you on Instagram? This extension snitches on your fake followers. 😂",
+  "description": "Ever wondered who ghosted you on Instagram? This extension finds out people who don't follow you back",
   "permissions": ["scripting", "tabs", "activeTab"],
   "action": {
     "default_popup": "popup.html",
