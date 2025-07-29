@@ -5,6 +5,8 @@ const progressContainer = document.getElementById("progressBar");
 const resultList = document.getElementById("results");
 const copyBtn = document.getElementById("copy");
 const openBtn = document.getElementById("open");
+// const exportTxtBtn = document.getElementById("exportTxtBtn");
+const exportCSVBtn = document.getElementById("exportCsvBtn");
 
 function showStatus(text, withSpinner = true) {
   statusEl.innerHTML = withSpinner
@@ -41,6 +43,8 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         showStatus(`${nonFollowers.length} people ghosted ${username}`, false);
         copyBtn.style.display = "inline-block";
         openBtn.style.display = "inline-block";
+        // exportTxtBtn.style.display = "inline-block";
+        exportCSVBtn.style.display = "inline-block";
       }
     }, 50);
 
@@ -73,5 +77,33 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const url = URL.createObjectURL(blob);
       chrome.tabs.create({ url });
     });
+
+    // exportTxtBtn.addEventListener("click", () => {
+    //   if (!nonFollowers.length) return;
+    //   const content = nonFollowers.map(u => `${u.full_name} | (@${u.username})`).join("\n");
+    //   downloadFile("ghosted_list.txt", content, "text/plain");
+    // });
+
+    exportCSVBtn.addEventListener("click", () => {
+      if (!nonFollowers.length) return;
+      const headers = "Full Name,Username\n";
+      const rows = nonFollowers.map(u => `${u.full_name}, ${u.username}`).join("\n");
+      const content = headers + rows;
+      downloadFile("ghosted_list.csv", content, "text/csv");
+    });
+
+    function downloadFile(filename, content, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+
+      URL.revokeObjectURL(url);
+    }
+
   });
 });
+
