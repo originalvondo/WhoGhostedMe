@@ -1,16 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "WhoDoesn'tFollowMe",
+  "name": "Instagram Non-Follower Checker",
+  "description": "Check who doesn't follow you back on Instagram in one click.",
   "version": "1.0",
-  "description": "One‑click list of Instagram users who don’t follow you back.",
-  "permissions": ["scripting", "activeTab"],
+  "permissions": ["scripting", "tabs"],
   "host_permissions": ["https://www.instagram.com/*"],
   "action": {
     "default_popup": "popup.html"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://www.instagram.com/*/"],
+      "matches": ["https://www.instagram.com/*"],
       "js": ["content.js"]
     }
   ]

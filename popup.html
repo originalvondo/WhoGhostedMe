@@ -1,16 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Non-Followers</title>
-  <link rel="stylesheet" href="popup.css" />
+  <title>Instagram Non-Followers</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 10px;
+      width: 300px;
+    }
+    .user {
+      margin: 4px 0;
+    }
+    button {
+      margin-top: 10px;
+    }
+    #error {
+      color: red;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h2>Who Doesn’t Follow You Back?</h2>
-    <div id="status">Loading…</div>
-    <ul id="list"></ul>
-  </div>
+  <h3>Non-Followers</h3>
+  <div id="status">Checking...</div>
+  <div id="list"></div>
+  <button id="copyBtn">Copy list to clipboard</button>
+  <div id="error"></div>
+
   <script src="popup.js"></script>
 </body>
 </html>
