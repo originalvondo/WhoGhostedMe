@@ -2,54 +2,73 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Non-Followers</title>
+  <title>WhoGhostedMe</title>
   <style>
     body {
-      font-family: "Segoe UI", sans-serif;
-      width: 350px;
-      max-height: 600px;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+      width: 400px;
+      min-height: 300px;
       overflow-y: auto;
-      padding: 16px;
-      background-color: #fafafa;
-      color: #333;
+      background-color: white;
+      color: black;
     }
     h1 {
-      font-size: 20px;
-      margin-bottom: 10px;
+      font-size: 24px;
       text-align: center;
+      margin-bottom: 15px;
     }
     #status {
-      margin-bottom: 10px;
+      font-size: 16px;
+      margin-bottom: 15px;
       font-weight: bold;
+      text-align: center;
+    }
+    #progressBar {
+      height: 10px;
+      background: #ccc;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      display: none;
+    }
+    #bar {
+      height: 100%;
+      width: 0%;
+      background: black;
+      transition: width 0.3s;
     }
     ul {
-      padding-left: 16px;
+      padding-left: 0;
+      list-style-type: none;
+      margin-top: 10px;
     }
     li {
-      margin-bottom: 8px;
+      margin-bottom: 5px;
     }
     button {
-      margin-top: 15px;
-      padding: 10px;
-      font-size: 14px;
       width: 100%;
-      background-color: #3897f0;
-      color: white;
+      padding: 10px;
       border: none;
+      background-color: black;
+      color: white;
       border-radius: 5px;
       cursor: pointer;
+      font-size: 14px;
+      margin-top: 15px;
     }
     button:disabled {
-      background-color: #aaa;
+      background-color: #ddd;
       cursor: not-allowed;
     }
   </style>
 </head>
 <body>
-  <h1>Who Ghosted You</h1>
-  <div id="status">Checking profile...</div>
-  <ol id="nonFollowersList"></ol>
-  <button id="copyBtn" style="display:none;">Copy List to Clipboard</button>
+  <h1>WhoGhostedMe</h1>
+  <div id="status">Checking...</div>
+  <div id="progressBar"><div id="bar"></div></div>
+  <ul id="results"></ul>
+  <button id="copy" style="display:none;">Copy to Clipboard</button>
+  <button id="open" style="display:none;">Open in New Page</button>
 
   <script src="popup.js"></script>
 </body>

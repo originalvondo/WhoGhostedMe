@@ -1,17 +1,21 @@
 {
   "manifest_version": 3,
   "name": "WhoGhostedMe",
+  "description": "Uncover the shameless ghosts who dared to unfollow you on Instagram. Sweet revenge starts here 😎.",
   "version": "1.0",
-  "description": "Find out who doesn't follow you back on Instagram.",
   "permissions": ["scripting", "tabs", "activeTab"],
+  "host_permissions": ["https://www.instagram.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["*://www.instagram.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["content.js"]
     }
   ]
 }
+
