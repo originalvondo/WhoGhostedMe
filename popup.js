@@ -46,7 +46,7 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         // exportTxtBtn.style.display = "inline-block";
         exportCSVBtn.style.display = "inline-block";
       }
-    }, 50);
+    }, 20);
 
     copyBtn.addEventListener("click", () => {
       const text = nonFollowers.map(u =>
@@ -62,7 +62,7 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     openBtn.addEventListener("click", () => {
       const html = `
         <html>
-          <head><title>Ghosted by ${username}</title></head>
+          <head><title>Ghosted ${username}</title></head>
           <body>
             <h2>People who ghosted ${username}</h2>
             <ol>
