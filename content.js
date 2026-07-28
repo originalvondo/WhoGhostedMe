@@ -14,18 +14,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let followers = [];
         let followings = [];
 
-        const userQueryRes = await fetch(
-          `https://www.instagram.com/web/search/topsearch/?query=${username}`
-        );
-        const userQueryJson = await userQueryRes.json();
-        const user = userQueryJson.users.find(u => u.user.username === username);
-        const userId = user?.user?.pk;
+        // First try topsearch
+        let userId = null;
+        try {
+          const userQueryRes = await fetch(
+            `https://www.instagram.com/web/search/topsearch/?query=${username}`
+          );
+          const userQueryJson = await userQueryRes.json();
+          const user = userQueryJson.users.find(u => u.user.username === username);
+          userId = user?.user?.pk || null;
+        } catch (e) {
+          console.warn("Topsearch failed:", e);
+        }
+
+        // If topsearch fails, fallback to scraping profile_id from HTML
+        if (!userId) {
+          const html = document.documentElement.innerHTML;
+          const match = html.match(/"profile_id":"(\d+)"/);
+          if (match) {
+            userId = match[1];
+          }
+        }
 
         if (!userId) {
           sendResponse({ error: "User ID not found." });
           return;
         }
 
+        // Followers
         let after = null, has_next = true;
         while (has_next) {
           const res = await fetch(
@@ -50,6 +66,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           );
         }
 
+        // Followings
         after = null;
         has_next = true;
         while (has_next) {
@@ -75,6 +92,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           );
         }
 
+        // Compare followers and followings
         const dontFollowMeBack = followings.filter(f => {
           return !followers.find(fl => fl.username === f.username);
         });
