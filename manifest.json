@@ -17,6 +17,12 @@
       "js": ["content.js"]
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["worker.js"],
+      "matches": ["*://*.instagram.com/*"]
+    }
+  ],
   "icons": {
     "16": "icons/16.png",
     "48": "icons/48.png",

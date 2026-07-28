@@ -1,7 +1,10 @@
 // popup.js
 const statusEl = document.getElementById("status");
-const bar = document.getElementById("bar");
-const progressContainer = document.getElementById("progressBar");
+const progressContainer = document.getElementById("progressContainer");
+const followersProgress = document.getElementById("followersProgress");
+const followingsProgress = document.getElementById("followingsProgress");
+const followersProgressText = document.getElementById("followersProgressText");
+const followingsProgressText = document.getElementById("followingsProgressText");
 const resultList = document.getElementById("results");
 const copyBtn = document.getElementById("copy");
 const openBtn = document.getElementById("open");
@@ -13,6 +16,22 @@ function showStatus(text, withSpinner = true) {
     ? `${text}<span class="spinner"></span>`
     : text;
 }
+
+// Listen for progress updates from content script
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.action === 'progress') {
+    progressContainer.style.display = 'block';
+    
+    if (message.type === 'followers') {
+      followersProgressText.textContent = `${message.fetched} loaded`;
+      // We don't know total, so just show a growing bar
+      followersProgress.style.width = `${Math.min(message.fetched / 100 * 100, 100)}%`;
+    } else if (message.type === 'followings') {
+      followingsProgressText.textContent = `${message.fetched} loaded`;
+      followingsProgress.style.width = `${Math.min(message.fetched / 100 * 100, 100)}%`;
+    }
+  }
+});
 
 // kick off
 showStatus("Checking");
@@ -26,7 +45,7 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 
     const { nonFollowers, username } = response;
     let count = 0;
-    progressContainer.style.display = "block";
+    progressContainer.style.display = "none";
     showStatus(`Checking who ghosted ${username}`);
 
     const interval = setInterval(() => {
@@ -37,7 +56,6 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         resultList.appendChild(li);
 
         count++;
-        bar.style.width = `${(count / nonFollowers.length) * 100}%`;
       } else {
         clearInterval(interval);
         showStatus(`${nonFollowers.length} people ghosted ${username}`, false);
