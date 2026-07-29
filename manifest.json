@@ -23,6 +23,9 @@
       "matches": ["*://*.instagram.com/*"]
     }
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' data: https:; connect-src 'self' https://*.instagram.com https://*.cdninstagram.com https://*.fbcdn.net;"
+  },
   "icons": {
     "16": "icons/16.png",
     "48": "icons/48.png",

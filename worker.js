@@ -8,6 +8,7 @@ self.onmessage = function(e) {
   const followerUsernames = new Set(followers.map(f => f.username));
   
   // Filter followings to find those who don't follow back
+  // Keep the full user object including profile pictures
   const notFollowingBack = followings.filter(f => !followerUsernames.has(f.username));
   
   // Send result back to main thread

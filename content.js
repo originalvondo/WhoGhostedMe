@@ -45,12 +45,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.runtime.sendMessage({ action: 'progress', ...progress });
         };
 
+        // Function to fetch image and convert to data URL
+        const fetchImageAsDataUrl = async (imageUrl) => {
+          if (!imageUrl) return '';
+          try {
+            const response = await fetch(imageUrl);
+            if (!response.ok) return '';
+            const blob = await response.blob();
+            return new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(blob);
+            });
+          } catch (e) {
+            console.warn('Failed to fetch image:', imageUrl, e);
+            return '';
+          }
+        };
+
         // Fetch followers and followings in parallel
         const fetchFollowers = async (userId, onProgress) => {
           let followers = [];
           let after = null;
           let has_next = true;
           let totalFetched = 0;
+          let totalCount = 0;
 
           while (has_next) {
             const res = await fetch(
@@ -65,15 +85,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             has_next = data.data.user.edge_followed_by.page_info.has_next_page;
             after = data.data.user.edge_followed_by.page_info.end_cursor;
 
+            // Get total count from first response
+            if (totalCount === 0) {
+              totalCount = data.data.user.edge_followed_by.count;
+            }
+
             const newFollowers = data.data.user.edge_followed_by.edges.map(({ node }) => ({
               username: node.username,
               full_name: node.full_name,
+              profile_pic_url: node.profile_pic_url,
+              profile_pic_url_hd: node.profile_pic_url_hd,
             }));
             followers = followers.concat(newFollowers);
             totalFetched += newFollowers.length;
 
             if (onProgress) {
-              onProgress({ type: 'followers', fetched: totalFetched });
+              onProgress({ type: 'followers', fetched: totalFetched, total: totalCount });
             }
           }
           return followers;
@@ -84,6 +111,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           let after = null;
           let has_next = true;
           let totalFetched = 0;
+          let totalCount = 0;
 
           while (has_next) {
             const res = await fetch(
@@ -98,15 +126,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             has_next = data.data.user.edge_follow.page_info.has_next_page;
             after = data.data.user.edge_follow.page_info.end_cursor;
 
+            // Get total count from first response
+            if (totalCount === 0) {
+              totalCount = data.data.user.edge_follow.count;
+            }
+
             const newFollowings = data.data.user.edge_follow.edges.map(({ node }) => ({
               username: node.username,
               full_name: node.full_name,
+              profile_pic_url: node.profile_pic_url,
+              profile_pic_url_hd: node.profile_pic_url_hd,
             }));
             followings = followings.concat(newFollowings);
             totalFetched += newFollowings.length;
 
             if (onProgress) {
-              onProgress({ type: 'followings', fetched: totalFetched });
+              onProgress({ type: 'followings', fetched: totalFetched, total: totalCount });
             }
           }
           return followings;
@@ -128,9 +163,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (totalUsers > 10000) {
           // Use Web Worker for large lists
           const worker = new Worker(chrome.runtime.getURL('worker.js'));
-          worker.onmessage = (e) => {
+          worker.onmessage = async (e) => {
             const { notFollowingBack } = e.data;
-            sendResponse({ nonFollowers: notFollowingBack, username });
+            // Fetch profile pictures for ghosted users
+            const usersWithImages = await Promise.all(notFollowingBack.map(async (user) => {
+              const profilePic = user.profile_pic_url_hd || user.profile_pic_url;
+              const profilePicDataUrl = await fetchImageAsDataUrl(profilePic);
+              return { ...user, profile_pic_data_url: profilePicDataUrl };
+            }));
+            // Send ghosted users to popup
+            chrome.runtime.sendMessage({
+              action: 'ghostedUsers',
+              users: usersWithImages
+            });
+            sendResponse({ nonFollowers: usersWithImages, username });
             worker.terminate();
           };
           worker.postMessage({ followers, followings });
@@ -139,7 +185,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const followerUsernames = new Set(followers.map(f => f.username));
           const dontFollowMeBack = followings.filter(f => !followerUsernames.has(f.username));
 
-          sendResponse({ nonFollowers: dontFollowMeBack, username });
+          // Fetch profile pictures for ghosted users
+          const usersWithImages = await Promise.all(dontFollowMeBack.map(async (user) => {
+            const profilePic = user.profile_pic_url_hd || user.profile_pic_url;
+            const profilePicDataUrl = await fetchImageAsDataUrl(profilePic);
+            return { ...user, profile_pic_data_url: profilePicDataUrl };
+          }));
+
+          // Send ghosted users to popup
+          chrome.runtime.sendMessage({
+            action: 'ghostedUsers',
+            users: usersWithImages
+          });
+          
+          sendResponse({ nonFollowers: usersWithImages, username });
         }
       } catch (err) {
         sendResponse({ error: err.message });
