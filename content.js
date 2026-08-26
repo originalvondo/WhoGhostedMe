@@ -1,4 +1,101 @@
+function getCsrfToken() {
+  const match = document.cookie.match(/csrftoken=([^;]+)/);
+  if (match) return match[1];
+  return null;
+}
+
+async function unfollowUser(userId, username) {
+  // If userId is missing, try to look it up
+  if (!userId && username) {
+    try {
+      const userQueryRes = await fetch(
+        `https://www.instagram.com/web/search/topsearch/?query=${username}`
+      );
+      const userQueryJson = await userQueryRes.json();
+      const user = userQueryJson.users?.find(u => u.user.username === username);
+      userId = user?.user?.pk || null;
+    } catch (e) {
+      console.warn("User ID lookup failed:", e);
+    }
+  }
+
+  if (!userId) {
+    return { success: false, error: `User ID not found for ${username || 'unknown user'}` };
+  }
+
+  const csrfToken = getCsrfToken();
+  if (!csrfToken) {
+    return { success: false, error: "CSRF token not found. Please make sure you are logged into Instagram." };
+  }
+
+  // Attempt 1: Standard REST endpoint /api/v1/friendships/destroy/{userId}/
+  try {
+    const res = await fetch(`https://www.instagram.com/api/v1/friendships/destroy/${userId}/`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'X-IG-App-ID': '936619743392459',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-Instagram-AJAX': '1',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    });
+
+    const data = await res.json().catch(() => null);
+    if (res.ok && (data?.status === 'ok' || data?.friendship_status?.following === false)) {
+      return { success: true, userId, username, data };
+    }
+
+    if (data?.message || data?.feedback_message) {
+      return {
+        success: false,
+        error: data.message || data.feedback_message,
+        isRateLimit: data?.status === 'fail'
+      };
+    }
+  } catch (err) {
+    console.warn("REST unfollow attempt failed, trying fallback:", err);
+  }
+
+  // Attempt 2: Fallback endpoint /web/friendships/{userId}/unfollow/
+  try {
+    const res = await fetch(`https://www.instagram.com/web/friendships/${userId}/unfollow/`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'X-IG-App-ID': '936619743392459',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    });
+
+    const data = await res.json().catch(() => null);
+    if (res.ok && (data?.status === 'ok' || data?.friendship_status?.following === false)) {
+      return { success: true, userId, username, data };
+    }
+    if (data?.message) {
+      return { success: false, error: data.message };
+    }
+  } catch (err) {
+    console.warn("Web unfollow fallback failed:", err);
+  }
+
+  return { success: false, error: "Failed to unfollow user. Instagram may be rate limiting this action." };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "unfollowUser") {
+    (async () => {
+      try {
+        const result = await unfollowUser(message.userId, message.username);
+        sendResponse(result);
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === "getNonFollowers") {
     (async () => {
       try {
@@ -91,6 +188,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
 
             const newFollowers = data.data.user.edge_followed_by.edges.map(({ node }) => ({
+              id: node.id,
               username: node.username,
               full_name: node.full_name,
               profile_pic_url: node.profile_pic_url,
@@ -132,6 +230,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
 
             const newFollowings = data.data.user.edge_follow.edges.map(({ node }) => ({
+              id: node.id,
               username: node.username,
               full_name: node.full_name,
               profile_pic_url: node.profile_pic_url,
@@ -156,22 +255,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         followers = fetchedFollowers;
         followings = fetchedFollowings;
 
-        // Use Web Worker for comparison if lists are large (optional optimization)
-        // For smaller lists, do it directly on main thread
+        // Use Web Worker for comparison if lists are large
         const totalUsers = followers.length + followings.length;
         
         if (totalUsers > 10000) {
-          // Use Web Worker for large lists
           const worker = new Worker(chrome.runtime.getURL('worker.js'));
           worker.onmessage = async (e) => {
             const { notFollowingBack } = e.data;
-            // Fetch profile pictures for ghosted users
             const usersWithImages = await Promise.all(notFollowingBack.map(async (user) => {
               const profilePic = user.profile_pic_url_hd || user.profile_pic_url;
               const profilePicDataUrl = await fetchImageAsDataUrl(profilePic);
               return { ...user, profile_pic_data_url: profilePicDataUrl };
             }));
-            // Send ghosted users to popup
             chrome.runtime.sendMessage({
               action: 'ghostedUsers',
               users: usersWithImages
@@ -181,18 +276,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           };
           worker.postMessage({ followers, followings });
         } else {
-          // Compare followers and followings using Set for O(1) lookup
           const followerUsernames = new Set(followers.map(f => f.username));
           const dontFollowMeBack = followings.filter(f => !followerUsernames.has(f.username));
 
-          // Fetch profile pictures for ghosted users
           const usersWithImages = await Promise.all(dontFollowMeBack.map(async (user) => {
             const profilePic = user.profile_pic_url_hd || user.profile_pic_url;
             const profilePicDataUrl = await fetchImageAsDataUrl(profilePic);
             return { ...user, profile_pic_data_url: profilePicDataUrl };
           }));
 
-          // Send ghosted users to popup
           chrome.runtime.sendMessage({
             action: 'ghostedUsers',
             users: usersWithImages
