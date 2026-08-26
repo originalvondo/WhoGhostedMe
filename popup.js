@@ -1,5 +1,6 @@
 // popup.js
 const statusEl = document.getElementById("status");
+const errorNoticeEl = document.getElementById("errorNotice");
 const progressContainer = document.getElementById("progressContainer");
 const followersProgress = document.getElementById("followersProgress");
 const followingsProgress = document.getElementById("followingsProgress");
@@ -11,6 +12,7 @@ const openBtn = document.getElementById("open");
 let ghostedUsers = [];
 let currentUsername = "";
 let unfollowedUsers = new Set();
+let isOwnProfile = false;
 let activeTabId = null;
 
 function showStatus(text, withSpinner = true) {
@@ -19,16 +21,33 @@ function showStatus(text, withSpinner = true) {
     : text;
 }
 
+function showErrorNotice(msg) {
+  if (!errorNoticeEl) return;
+  if (msg) {
+    errorNoticeEl.textContent = msg;
+    errorNoticeEl.style.display = "block";
+  } else {
+    errorNoticeEl.style.display = "none";
+  }
+}
+
 function saveState() {
   chrome.storage.local.set({
     ghostedUsers: ghostedUsers,
     targetUsername: currentUsername,
-    unfollowedUsers: Array.from(unfollowedUsers)
+    unfollowedUsers: Array.from(unfollowedUsers),
+    isOwnProfile: isOwnProfile
   });
 }
 
 function renderGhostedUsers(users) {
   resultList.innerHTML = '';
+  
+  if (!users || users.length === 0) {
+    resultList.innerHTML = `<li class="empty-state">No non-followers found 🎉</li>`;
+    return;
+  }
+
   users.forEach(user => {
     const li = document.createElement("li");
     li.className = "user-card";
@@ -39,6 +58,17 @@ function renderGhostedUsers(users) {
     const userId = user.id || '';
     const isUnfollowed = unfollowedUsers.has(userId) || unfollowedUsers.has(username);
     
+    // Only render the Unfollow button if viewing own profile
+    const unfollowButtonHtml = isOwnProfile ? `
+      <button class="unfollow-btn ${isUnfollowed ? 'unfollowed' : ''}" 
+              data-id="${userId}" 
+              data-username="${username}"
+              ${isUnfollowed ? 'disabled' : ''}
+              title="${isUnfollowed ? 'Already unfollowed' : `Unfollow @${username}`}">
+        <span>${isUnfollowed ? 'Unfollowed' : 'Unfollow'}</span>
+      </button>
+    ` : '';
+
     li.innerHTML = `
       <a href="https://instagram.com/${username}" target="_blank" class="user-link">
         <img src="${profilePic}" alt="${username}" class="profile-pic" data-fallback="true">
@@ -47,16 +77,10 @@ function renderGhostedUsers(users) {
           ${fullName ? `<span class="full-name">${fullName}</span>` : ''}
         </div>
       </a>
-      <button class="unfollow-btn ${isUnfollowed ? 'unfollowed' : ''}" 
-              data-id="${userId}" 
-              data-username="${username}"
-              ${isUnfollowed ? 'disabled' : ''}
-              title="${isUnfollowed ? 'Already unfollowed' : `Unfollow @${username}`}">
-        <span>${isUnfollowed ? 'Unfollowed' : 'Unfollow'}</span>
-      </button>
+      ${unfollowButtonHtml}
     `;
     
-    // Add error handler for profile picture
+    // Fallback for avatar image load error
     const img = li.querySelector('.profile-pic');
     if (img && profilePic && !user.profile_pic_data_url) {
       img.addEventListener('error', function fallback() {
@@ -65,13 +89,15 @@ function renderGhostedUsers(users) {
       });
     }
 
-    // Attach unfollow button listener
-    const btn = li.querySelector('.unfollow-btn');
-    if (btn && !isUnfollowed) {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        handleUnfollowClick(btn, userId, username);
-      });
+    // Attach unfollow button click handler if present
+    if (isOwnProfile) {
+      const btn = li.querySelector('.unfollow-btn');
+      if (btn && !isUnfollowed) {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleUnfollowClick(btn, userId, username);
+        });
+      }
     }
     
     resultList.appendChild(li);
@@ -85,6 +111,7 @@ async function handleUnfollowClick(button, userId, username) {
   button.classList.add('loading');
   button.disabled = true;
   button.innerHTML = `<span>Unfollowing...</span>`;
+  showErrorNotice(null);
 
   const sendUnfollowMessage = () => {
     return new Promise((resolve) => {
@@ -99,7 +126,7 @@ async function handleUnfollowClick(button, userId, username) {
               chrome.runtime.sendMessage(
                 { type: "relayUnfollow", userId, username },
                 (bgResponse) => {
-                  resolve(bgResponse || { success: false, error: "Unable to contact Instagram." });
+                  resolve(bgResponse || { success: false, error: "Unable to contact Instagram tab." });
                 }
               );
             }
@@ -135,9 +162,9 @@ async function handleUnfollowClick(button, userId, username) {
     button.disabled = false;
     button.innerHTML = `<span>Retry</span>`;
     button.title = `Error: ${errorMsg}. Click to retry.`;
-    if (response?.isRateLimit) {
-      alert(`Instagram Notice: ${errorMsg}`);
-    }
+    
+    // Display error inline in popup instead of alert dialog
+    showErrorNotice(errorMsg);
   }
 }
 
@@ -157,19 +184,23 @@ chrome.runtime.onMessage.addListener((message) => {
     }
   } else if (message.action === 'ghostedUsers') {
     ghostedUsers = message.users;
+    isOwnProfile = Boolean(message.isOwnProfile);
     renderGhostedUsers(message.users);
     saveState();
   }
 });
 
-// Load previously unfollowed users
-chrome.storage.local.get(['unfollowedUsers'], (res) => {
+// Load previously unfollowed users and own profile state
+chrome.storage.local.get(['unfollowedUsers', 'isOwnProfile'], (res) => {
   if (res.unfollowedUsers && Array.isArray(res.unfollowedUsers)) {
     unfollowedUsers = new Set(res.unfollowedUsers);
   }
+  if (typeof res.isOwnProfile === 'boolean') {
+    isOwnProfile = res.isOwnProfile;
+  }
 });
 
-// kick off
+// Kick off
 showStatus("Checking");
 
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -189,9 +220,10 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const { nonFollowers, username } = response;
     currentUsername = username || "";
     ghostedUsers = nonFollowers || [];
+    isOwnProfile = Boolean(response.isOwnProfile);
 
     progressContainer.style.display = "none";
-    showStatus(`${ghostedUsers.length} people ghosted ${username}`, false);
+    statusEl.innerHTML = `<strong>${ghostedUsers.length}</strong> people don't follow <strong>@${currentUsername}</strong> back`;
     
     renderGhostedUsers(ghostedUsers);
     saveState();

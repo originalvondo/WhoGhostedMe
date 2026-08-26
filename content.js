@@ -287,6 +287,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         followers = fetchedFollowers;
         followings = fetchedFollowings;
 
+        const viewerIdMatch = document.cookie.match(/ds_user_id=([^;]+)/);
+        const viewerUserId = viewerIdMatch ? viewerIdMatch[1] : null;
+        const isOwnProfile = Boolean(userId && viewerUserId && String(userId) === String(viewerUserId));
+
         // Use Web Worker for comparison if lists are large
         const totalUsers = followers.length + followings.length;
         
@@ -301,9 +305,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }));
             chrome.runtime.sendMessage({
               action: 'ghostedUsers',
-              users: usersWithImages
+              users: usersWithImages,
+              isOwnProfile
             });
-            sendResponse({ nonFollowers: usersWithImages, username });
+            sendResponse({ nonFollowers: usersWithImages, username, isOwnProfile });
             worker.terminate();
           };
           worker.postMessage({ followers, followings });
@@ -319,10 +324,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           chrome.runtime.sendMessage({
             action: 'ghostedUsers',
-            users: usersWithImages
+            users: usersWithImages,
+            isOwnProfile
           });
           
-          sendResponse({ nonFollowers: usersWithImages, username });
+          sendResponse({ nonFollowers: usersWithImages, username, isOwnProfile });
         }
       } catch (err) {
         sendResponse({ error: err.message });

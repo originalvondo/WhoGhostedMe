@@ -2,26 +2,39 @@
 let ghostedUsers = [];
 let targetUsername = "";
 let unfollowedUsers = new Set();
+let isOwnProfile = false;
 
 const pageTitle = document.getElementById("pageTitle");
+const errorNoticeEl = document.getElementById("errorNotice");
 const userList = document.getElementById("user-list");
+
+function showErrorNotice(msg) {
+  if (!errorNoticeEl) return;
+  if (msg) {
+    errorNoticeEl.textContent = msg;
+    errorNoticeEl.style.display = "block";
+  } else {
+    errorNoticeEl.style.display = "none";
+  }
+}
 
 function saveState() {
   chrome.storage.local.set({
     ghostedUsers: ghostedUsers,
     targetUsername: targetUsername,
-    unfollowedUsers: Array.from(unfollowedUsers)
+    unfollowedUsers: Array.from(unfollowedUsers),
+    isOwnProfile: isOwnProfile
   });
 }
 
 function renderUsers() {
   if (targetUsername) {
-    pageTitle.textContent = `People who ghosted ${targetUsername}`;
-    document.title = `Ghosted ${targetUsername}`;
+    pageTitle.textContent = `People who don't follow @${targetUsername} back`;
+    document.title = `WhoGhostedMe (@${targetUsername})`;
   }
 
   if (!ghostedUsers || ghostedUsers.length === 0) {
-    userList.innerHTML = `<div class="empty-state">No one ghosted you! 🎉</div>`;
+    userList.innerHTML = `<div class="empty-state">No non-followers found 🎉</div>`;
     return;
   }
 
@@ -32,6 +45,16 @@ function renderUsers() {
     const userId = u.id || '';
     const isUnfollowed = unfollowedUsers.has(userId) || unfollowedUsers.has(username);
 
+    const unfollowButtonHtml = isOwnProfile ? `
+      <button class="unfollow-btn ${isUnfollowed ? 'unfollowed' : ''}" 
+              data-id="${userId}" 
+              data-username="${username}"
+              ${isUnfollowed ? 'disabled' : ''}
+              title="${isUnfollowed ? 'Already unfollowed' : `Unfollow @${username}`}">
+        <span>${isUnfollowed ? 'Unfollowed' : 'Unfollow'}</span>
+      </button>
+    ` : '';
+
     return `
       <div class="user-card" data-id="${userId}" data-username="${username}">
         <a href="https://instagram.com/${username}" target="_blank" class="user-link">
@@ -41,31 +64,27 @@ function renderUsers() {
             ${fullName ? `<span class="full-name">${fullName}</span>` : ''}
           </div>
         </a>
-        <button class="unfollow-btn ${isUnfollowed ? 'unfollowed' : ''}" 
-                data-id="${userId}" 
-                data-username="${username}"
-                ${isUnfollowed ? 'disabled' : ''}
-                title="${isUnfollowed ? 'Already unfollowed' : `Unfollow @${username}`}">
-          <span>${isUnfollowed ? 'Unfollowed' : 'Unfollow'}</span>
-        </button>
+        ${unfollowButtonHtml}
       </div>
     `;
   }).join('');
 
-  // Attach unfollow button handlers
-  const buttons = userList.querySelectorAll('.unfollow-btn');
-  buttons.forEach(btn => {
-    const userId = btn.dataset.id;
-    const username = btn.dataset.username;
-    const isUnfollowed = unfollowedUsers.has(userId) || unfollowedUsers.has(username);
+  // Attach unfollow button handlers if viewing own profile
+  if (isOwnProfile) {
+    const buttons = userList.querySelectorAll('.unfollow-btn');
+    buttons.forEach(btn => {
+      const userId = btn.dataset.id;
+      const username = btn.dataset.username;
+      const isUnfollowed = unfollowedUsers.has(userId) || unfollowedUsers.has(username);
 
-    if (!isUnfollowed) {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        handleUnfollow(btn, userId, username);
-      });
-    }
-  });
+      if (!isUnfollowed) {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleUnfollow(btn, userId, username);
+        });
+      }
+    });
+  }
 }
 
 async function handleUnfollow(button, userId, username) {
@@ -75,6 +94,7 @@ async function handleUnfollow(button, userId, username) {
   button.classList.add('loading');
   button.disabled = true;
   button.innerHTML = `<span>Unfollowing...</span>`;
+  showErrorNotice(null);
 
   chrome.runtime.sendMessage(
     { type: "relayUnfollow", userId, username },
@@ -96,16 +116,16 @@ async function handleUnfollow(button, userId, username) {
         button.disabled = false;
         button.innerHTML = `<span>Retry</span>`;
         button.title = `Error: ${errorMsg}. Click to retry.`;
-        if (response?.isRateLimit) {
-          alert(`Instagram Notice: ${errorMsg}`);
-        }
+        
+        // Inline notice instead of alert dialog
+        showErrorNotice(errorMsg);
       }
     }
   );
 }
 
 // Initial load from storage
-chrome.storage.local.get(["ghostedUsers", "targetUsername", "unfollowedUsers"], (data) => {
+chrome.storage.local.get(["ghostedUsers", "targetUsername", "unfollowedUsers", "isOwnProfile"], (data) => {
   if (data.ghostedUsers && Array.isArray(data.ghostedUsers)) {
     ghostedUsers = data.ghostedUsers;
   }
@@ -114,6 +134,9 @@ chrome.storage.local.get(["ghostedUsers", "targetUsername", "unfollowedUsers"], 
   }
   if (data.unfollowedUsers && Array.isArray(data.unfollowedUsers)) {
     unfollowedUsers = new Set(data.unfollowedUsers);
+  }
+  if (typeof data.isOwnProfile === 'boolean') {
+    isOwnProfile = data.isOwnProfile;
   }
 
   renderUsers();
@@ -128,6 +151,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     if (changes.ghostedUsers) {
       ghostedUsers = changes.ghostedUsers.newValue || [];
+      renderUsers();
+    }
+    if (changes.isOwnProfile) {
+      isOwnProfile = Boolean(changes.isOwnProfile.newValue);
       renderUsers();
     }
   }
