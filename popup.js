@@ -135,6 +135,9 @@ async function handleUnfollowClick(button, userId, username) {
     button.disabled = false;
     button.innerHTML = `<span>Retry</span>`;
     button.title = `Error: ${errorMsg}. Click to retry.`;
+    if (response?.isRateLimit) {
+      alert(`Instagram Notice: ${errorMsg}`);
+    }
   }
 }
 

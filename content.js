@@ -28,17 +28,19 @@ async function unfollowUser(userId, username) {
     return { success: false, error: "CSRF token not found. Please make sure you are logged into Instagram." };
   }
 
-  // Attempt 1: Standard REST endpoint /api/v1/friendships/destroy/{userId}/
+  const baseHeaders = {
+    'X-CSRFToken': csrfToken,
+    'X-IG-App-ID': '936619743392459',
+    'X-Requested-With': 'XMLHttpRequest',
+    'X-Instagram-AJAX': '1',
+    'Content-Type': 'application/x-www-form-urlencoded'
+  };
+
+  // Strategy 1: Standard REST API endpoint
   try {
     const res = await fetch(`https://www.instagram.com/api/v1/friendships/destroy/${userId}/`, {
       method: 'POST',
-      headers: {
-        'X-CSRFToken': csrfToken,
-        'X-IG-App-ID': '936619743392459',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-Instagram-AJAX': '1',
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+      headers: baseHeaders
     });
 
     const data = await res.json().catch(() => null);
@@ -46,27 +48,53 @@ async function unfollowUser(userId, username) {
       return { success: true, userId, username, data };
     }
 
-    if (data?.message || data?.feedback_message) {
+    if (res.status === 429 || data?.message === 'feedback_required' || data?.feedback_title) {
       return {
         success: false,
-        error: data.message || data.feedback_message,
-        isRateLimit: data?.status === 'fail'
+        error: data?.feedback_message || data?.message || "Instagram action limit reached. Please wait a few minutes.",
+        isRateLimit: true
       };
     }
   } catch (err) {
-    console.warn("REST unfollow attempt failed, trying fallback:", err);
+    console.warn("REST unfollow attempt failed, trying GraphQL:", err);
   }
 
-  // Attempt 2: Fallback endpoint /web/friendships/{userId}/unfollow/
+  // Strategy 2: GraphQL usePolarisUnfollowMutation
+  try {
+    const formBody = new URLSearchParams();
+    formBody.append('fb_api_req_friendly_name', 'usePolarisUnfollowMutation');
+    formBody.append('variables', JSON.stringify({ target_user_id: String(userId), user_id: String(userId) }));
+
+    const res = await fetch('https://www.instagram.com/api/graphql', {
+      method: 'POST',
+      headers: {
+        ...baseHeaders,
+        'X-FB-Friendly-Name': 'usePolarisUnfollowMutation'
+      },
+      body: formBody.toString()
+    });
+
+    const data = await res.json().catch(() => null);
+    if (res.ok && (data?.data?.xdt_destroy_friendship?.friendship_status?.following === false || data?.status === 'ok')) {
+      return { success: true, userId, username, data };
+    }
+
+    if (res.status === 429 || data?.message === 'feedback_required') {
+      return {
+        success: false,
+        error: data?.feedback_message || "Instagram action limit reached. Please wait a few minutes.",
+        isRateLimit: true
+      };
+    }
+  } catch (err) {
+    console.warn("GraphQL unfollow attempt failed, trying web fallback:", err);
+  }
+
+  // Strategy 3: Web endpoint fallback
   try {
     const res = await fetch(`https://www.instagram.com/web/friendships/${userId}/unfollow/`, {
       method: 'POST',
-      headers: {
-        'X-CSRFToken': csrfToken,
-        'X-IG-App-ID': '936619743392459',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+      headers: baseHeaders
     });
 
     const data = await res.json().catch(() => null);
@@ -74,13 +102,17 @@ async function unfollowUser(userId, username) {
       return { success: true, userId, username, data };
     }
     if (data?.message) {
-      return { success: false, error: data.message };
+      return { 
+        success: false, 
+        error: data.message === 'feedback_required' ? "Instagram limit reached. Please wait a few minutes." : data.message,
+        isRateLimit: data.message === 'feedback_required'
+      };
     }
   } catch (err) {
     console.warn("Web unfollow fallback failed:", err);
   }
 
-  return { success: false, error: "Failed to unfollow user. Instagram may be rate limiting this action." };
+  return { success: false, error: "Instagram limit reached. Please wait a few minutes before unfollowing more accounts." };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
