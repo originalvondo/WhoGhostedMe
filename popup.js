@@ -73,7 +73,15 @@ function renderGhostedUsers(users) {
       <a href="https://instagram.com/${username}" target="_blank" class="user-link">
         <img src="${profilePic}" alt="${username}" class="profile-pic" data-fallback="true">
         <div class="user-info">
-          <span class="username">@${username}</span>
+          <div class="username-row">
+            <span class="username">@${username}</span>
+            <span class="external-icon" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="7" y1="17" x2="17" y2="7"></line>
+                <polyline points="7 7 17 7 17 17"></polyline>
+              </svg>
+            </span>
+          </div>
           ${fullName ? `<span class="full-name">${fullName}</span>` : ''}
         </div>
       </a>

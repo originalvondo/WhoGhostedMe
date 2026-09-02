@@ -60,7 +60,15 @@ function renderUsers() {
         <a href="https://instagram.com/${username}" target="_blank" class="user-link">
           <img src="${profilePic}" alt="${username}" class="profile-pic" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNlMGUwZTAiLz4KPHBhdGggZD0iTTMwIDE4QzI0LjQ3NzEgMTggMTggMjQuNDc3MSAxOCAzMEMxOCAzNS41MjI5IDI0LjQ3NzEgNDEgMzAgNDFDMzUuNTIyOSA0MSA0MSAzNS41MjI5IDQxIDMwQzQxIDI0LjQ3NzEgMzUuNTIyOSAxOCAzMCAxOFoiIGZpbGw9IiM5OTkiLz4KPHBhdGggZD0iTTMwIDQ0QzM1LjQxODMgNDQgMzkgNDAuNDE4MyAzOSAzNkMzOSAyOS41ODE3IDM1LjQxODMgMjYgMzAgMjZDMjQuNTgxNyAyNiAyMSAyOS41ODE3IDIxIDM2QzIxIDQwLjQxODMgMjQuNTgxNyA0NCAzMCA0NFoiIGZpbGw9IiM5OTkiLz4KPC9zdmc+'">
           <div class="user-info">
-            <span class="username">@${username}</span>
+            <div class="username-row">
+              <span class="username">@${username}</span>
+              <span class="external-icon" aria-hidden="true">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="7" y1="17" x2="17" y2="7"></line>
+                  <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+              </span>
+            </div>
             ${fullName ? `<span class="full-name">${fullName}</span>` : ''}
           </div>
         </a>
