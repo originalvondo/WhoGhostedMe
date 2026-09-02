@@ -4,7 +4,11 @@
   "version": "1.0",
   "description": "Ever wondered who ghosted you on Instagram? This extension finds out people who don't follow you back",
   "permissions": ["scripting", "tabs", "activeTab", "storage", "cookies"],
-  "host_permissions": ["*://*.instagram.com/*"],
+  "host_permissions": [
+    "*://*.instagram.com/*",
+    "*://*.cdninstagram.com/*",
+    "*://*.fbcdn.net/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "WhoGhostedMe"
