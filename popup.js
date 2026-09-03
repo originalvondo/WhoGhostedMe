@@ -43,11 +43,19 @@ function showErrorNotice(msg) {
 }
 
 function getActiveGhostedUsers() {
-  return (ghostedUsers || []).filter(u => !unfollowedUsers.has(u.id) && !unfollowedUsers.has(u.username));
+  return (ghostedUsers || []).filter(u => {
+    const id = String(u.id || '');
+    const uname = (u.username || '').toLowerCase();
+    return !unfollowedUsers.has(id) && !unfollowedUsers.has(u.username) && !unfollowedUsers.has(uname);
+  });
 }
 
 function getActiveFansUsers() {
-  return (fansUsers || []).filter(u => !removedFollowers.has(u.id) && !removedFollowers.has(u.username));
+  return (fansUsers || []).filter(u => {
+    const id = String(u.id || '');
+    const uname = (u.username || '').toLowerCase();
+    return !removedFollowers.has(id) && !removedFollowers.has(u.username) && !removedFollowers.has(uname);
+  });
 }
 
 function saveState() {
@@ -503,14 +511,8 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-// Load previously unfollowed/removed users and stored lists
-chrome.storage.local.get(['unfollowedUsers', 'removedFollowers', 'isOwnProfile'], (res) => {
-  if (res.unfollowedUsers && Array.isArray(res.unfollowedUsers)) {
-    unfollowedUsers = new Set(res.unfollowedUsers);
-  }
-  if (res.removedFollowers && Array.isArray(res.removedFollowers)) {
-    removedFollowers = new Set(res.removedFollowers);
-  }
+// Load stored profile ownership
+chrome.storage.local.get(['isOwnProfile'], (res) => {
   if (typeof res.isOwnProfile === 'boolean') {
     isOwnProfile = res.isOwnProfile;
   }
@@ -539,10 +541,13 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     fansUsers = fans || [];
     isOwnProfile = Boolean(response.isOwnProfile);
 
-    // Reset followed & requested users on fresh live scan so stale caches don't override reality
+    // Fresh live scan from Instagram represents real-time ground truth.
+    // Reset all temporary session action sets so newly followed/changed accounts show up accurately.
+    unfollowedUsers = new Set();
+    removedFollowers = new Set();
     followedUsers = new Set();
     requestedUsers = new Set();
-    chrome.storage.local.remove(['followedUsers', 'requestedUsers']);
+    chrome.storage.local.remove(['unfollowedUsers', 'removedFollowers', 'followedUsers', 'requestedUsers']);
 
     progressContainer.style.display = "none";
     if (tabsContainer) tabsContainer.style.display = "flex";

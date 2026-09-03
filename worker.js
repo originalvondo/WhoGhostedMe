@@ -4,11 +4,11 @@
 self.onmessage = function(e) {
   const { followers, followings } = e.data;
   
-  const followerUsernames = new Set(followers.map(f => f.username));
-  const notFollowingBack = followings.filter(f => !followerUsernames.has(f.username));
+  const followerUsernames = new Set(followers.map(f => (f.username || '').toLowerCase()));
+  const notFollowingBack = followings.filter(f => !followerUsernames.has((f.username || '').toLowerCase()));
 
-  const followingUsernames = new Set(followings.map(f => f.username));
-  const youDontFollowBack = followers.filter(f => !followingUsernames.has(f.username));
+  const followingUsernames = new Set(followings.map(f => (f.username || '').toLowerCase()));
+  const youDontFollowBack = followers.filter(f => !followingUsernames.has((f.username || '').toLowerCase()));
   
   self.postMessage({ notFollowingBack, youDontFollowBack });
 };

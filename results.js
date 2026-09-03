@@ -27,11 +27,19 @@ function showErrorNotice(msg) {
 }
 
 function getActiveGhostedUsers() {
-  return (ghostedUsers || []).filter(u => !unfollowedUsers.has(u.id) && !unfollowedUsers.has(u.username));
+  return (ghostedUsers || []).filter(u => {
+    const id = String(u.id || '');
+    const uname = (u.username || '').toLowerCase();
+    return !unfollowedUsers.has(id) && !unfollowedUsers.has(u.username) && !unfollowedUsers.has(uname);
+  });
 }
 
 function getActiveFansUsers() {
-  return (fansUsers || []).filter(u => !removedFollowers.has(u.id) && !removedFollowers.has(u.username));
+  return (fansUsers || []).filter(u => {
+    const id = String(u.id || '');
+    const uname = (u.username || '').toLowerCase();
+    return !removedFollowers.has(id) && !removedFollowers.has(u.username) && !removedFollowers.has(uname);
+  });
 }
 
 function saveState() {

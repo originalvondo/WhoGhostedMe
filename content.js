@@ -777,11 +777,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           };
           worker.postMessage({ followers, followings });
         } else {
-          const followerUsernames = new Set(followers.map(f => f.username));
-          const dontFollowMeBack = followings.filter(f => !followerUsernames.has(f.username));
+          const followerUsernames = new Set(followers.map(f => (f.username || '').toLowerCase()));
+          const dontFollowMeBack = followings.filter(f => !followerUsernames.has((f.username || '').toLowerCase()));
 
-          const followingUsernames = new Set(followings.map(f => f.username));
-          const youDontFollowBack = followers.filter(f => !followingUsernames.has(f.username));
+          const followingUsernames = new Set(followings.map(f => (f.username || '').toLowerCase()));
+          const youDontFollowBack = followers.filter(f => !followingUsernames.has((f.username || '').toLowerCase()));
 
           const [usersWithImages, fansWithImages] = await Promise.all([
             attachImageDataUrls(dontFollowMeBack),
