@@ -8,8 +8,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Relay unfollow message to an Instagram tab if called from results.html or popup
-  if (message.type === "relayUnfollow") {
+  // Relay unfollow or cancel follow request message to an Instagram tab if called from results.html or popup
+  if (message.type === "relayUnfollow" || message.type === "relayCancelFollowRequest") {
     (async () => {
       try {
         // Find an open Instagram tab
@@ -17,16 +17,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!tabs || tabs.length === 0) {
           sendResponse({
             success: false,
-            error: "No open Instagram tab found. Please keep an Instagram tab open to perform unfollow actions."
+            error: "No open Instagram tab found. Please keep an Instagram tab open to perform actions."
           });
           return;
         }
 
-        // Send unfollow message to the first available Instagram tab content script
+        // Send message to the first available Instagram tab content script
         const targetTab = tabs.find(t => t.active) || tabs[0];
+        const forwardedType = message.type === "relayCancelFollowRequest" ? "cancelFollowRequest" : "unfollowUser";
         chrome.tabs.sendMessage(
           targetTab.id,
-          { type: "unfollowUser", userId: message.userId, username: message.username },
+          { type: forwardedType, userId: message.userId, username: message.username },
           (response) => {
             if (chrome.runtime.lastError) {
               sendResponse({

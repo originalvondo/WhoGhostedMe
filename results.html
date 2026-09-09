@@ -288,6 +288,28 @@
       color: #737373;
       border: 1px solid #dbdbdb;
     }
+    .follow-btn.requested {
+      background-color: #efefef;
+      color: #262626;
+      border: 1px solid #dbdbdb;
+      min-width: 110px;
+      cursor: pointer;
+      transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+    .follow-btn.requested .btn-text-hover {
+      display: none;
+    }
+    .follow-btn.requested:hover:not(:disabled):not(.loading) {
+      background-color: #fee2e2;
+      color: #ed4956;
+      border-color: #fecaca;
+    }
+    .follow-btn.requested:hover:not(:disabled):not(.loading) .btn-text-default {
+      display: none;
+    }
+    .follow-btn.requested:hover:not(:disabled):not(.loading) .btn-text-hover {
+      display: inline;
+    }
     .remove-btn {
       background-color: #efefef;
       color: #262626;

@@ -116,7 +116,9 @@ async function unfollowUser(userId, username) {
     return Boolean(
       data?.status === 'ok' ||
       data?.friendship_status?.following === false ||
+      data?.friendship_status?.outgoing_request === false ||
       data?.data?.xdt_destroy_friendship?.friendship_status?.following === false ||
+      data?.data?.xdt_destroy_friendship?.friendship_status?.outgoing_request === false ||
       data?.data?.xdt_destroy_friendship?.id
     );
   };
@@ -167,7 +169,12 @@ async function unfollowUser(userId, username) {
     const formBody = new URLSearchParams();
     formBody.append('fb_api_req_friendly_name', 'usePolarisUnfollowMutation');
     formBody.append('fb_api_caller_class', 'RelayModern');
-    formBody.append('variables', JSON.stringify({ target_user_id: String(userId), user_id: String(userId) }));
+    formBody.append('doc_id', '27789106940691111');
+    formBody.append('variables', JSON.stringify({
+      target_user_id: String(userId),
+      container_module: 'profile',
+      nav_chain: 'PolarisProfilePostsTabRoot:profilePage:1:via_cold_start,PolarisProfilePostsTabRoot:profilePage:2:unexpected'
+    }));
     if (fbDtsg) {
       formBody.append('fb_dtsg', fbDtsg);
       formBody.append('jazoest', jazoest);
@@ -549,7 +556,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === "unfollowUser") {
+  if (message.type === "unfollowUser" || message.type === "cancelFollowRequest") {
     (async () => {
       try {
         const result = await unfollowUser(message.userId, message.username);

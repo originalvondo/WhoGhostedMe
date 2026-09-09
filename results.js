@@ -244,17 +244,41 @@ function renderUsers() {
           </div>
         `;
       } else {
-        const followLabel = isFollowed ? 'Following' : (isRequested ? 'Requested' : 'Follow back');
-        const followClass = (isFollowed || isRequested) ? 'followed' : '';
-        actionButtonHtml = `
-          <div class="card-actions">
-            <button class="follow-btn ${followClass}" 
+        let followBtnHtml = '';
+        if (isFollowed) {
+          followBtnHtml = `
+            <button class="follow-btn followed" 
                     data-id="${userId}" 
                     data-username="${username}"
-                    ${(isFollowed || isRequested) ? 'disabled' : ''}
-                    title="${isFollowed ? 'Already following' : (isRequested ? 'Follow request sent' : `Follow back @${username}`)}">
-              <span>${followLabel}</span>
+                    disabled
+                    title="Already following @${username}">
+              <span>Following</span>
             </button>
+          `;
+        } else if (isRequested) {
+          followBtnHtml = `
+            <button class="follow-btn requested" 
+                    data-id="${userId}" 
+                    data-username="${username}"
+                    title="Cancel follow request to @${username}">
+              <span class="btn-text-default">Requested</span>
+              <span class="btn-text-hover">Cancel request</span>
+            </button>
+          `;
+        } else {
+          followBtnHtml = `
+            <button class="follow-btn" 
+                    data-id="${userId}" 
+                    data-username="${username}"
+                    title="Follow back @${username}">
+              <span>Follow back</span>
+            </button>
+          `;
+        }
+
+        actionButtonHtml = `
+          <div class="card-actions">
+            ${followBtnHtml}
             <button class="remove-btn ${isRemoved ? 'removed' : ''}" 
                     data-id="${userId}" 
                     data-username="${username}"
@@ -348,7 +372,12 @@ function renderUsers() {
         const isFollowed = followedUsers.has(userId) || followedUsers.has(username) || followedUsers.has((username || '').toLowerCase());
         const isRequested = requestedUsers.has(userId) || requestedUsers.has(username) || requestedUsers.has((username || '').toLowerCase());
 
-        if (!isFollowed && !isRequested) {
+        if (isRequested) {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handleCancelRequest(btn, userId, username);
+          });
+        } else if (!isFollowed) {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
             handleFollow(btn, userId, username);
@@ -437,15 +466,61 @@ async function handleFollow(button, userId, username) {
         button.classList.add('followed');
         button.disabled = true;
         if (response.isRequested) {
-          if (userId) requestedUsers.add(userId);
-          if (username) requestedUsers.add(username);
-          button.innerHTML = `<span>Requested</span>`;
-          button.title = "Follow request sent";
+          button.classList.remove('followed');
+          button.classList.add('requested');
+          button.disabled = false;
+          button.innerHTML = `<span class="btn-text-default">Requested</span><span class="btn-text-hover">Cancel request</span>`;
+          button.title = `Cancel follow request to @${username}`;
+
+          if (userId) requestedUsers.add(String(userId));
+          if (username) {
+            requestedUsers.add(username);
+            requestedUsers.add(username.toLowerCase());
+          }
+
+          const u = (fansUsers || []).find(f => String(f.id) === String(userId) || f.username === username);
+          if (u) {
+            u.outgoing_request = true;
+            u.is_requested = true;
+            if (u.friendship_status) {
+              u.friendship_status.outgoing_request = true;
+            }
+          }
+
+          const card = button.closest('.user-card');
+          if (card) {
+            let badgesContainer = card.querySelector('.user-badges');
+            if (!badgesContainer) {
+              const userInfo = card.querySelector('.user-info');
+              if (userInfo) {
+                badgesContainer = document.createElement('div');
+                badgesContainer.className = 'user-badges';
+                userInfo.appendChild(badgesContainer);
+              }
+            }
+            if (badgesContainer && !badgesContainer.querySelector('.badge-requested')) {
+              badgesContainer.insertAdjacentHTML('beforeend', '<span class="badge badge-requested" title="Follow request sent (Pending approval)">Request Sent</span>');
+            }
+          }
+
+          const newBtn = button.cloneNode(true);
+          button.parentNode.replaceChild(newBtn, button);
+          newBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handleCancelRequest(newBtn, userId, username);
+          });
         } else {
-          if (userId) followedUsers.add(userId);
-          if (username) followedUsers.add(username);
+          button.classList.remove('requested');
+          button.classList.add('followed');
+          button.disabled = true;
           button.innerHTML = `<span>Following</span>`;
           button.title = "Following";
+
+          if (userId) followedUsers.add(String(userId));
+          if (username) {
+            followedUsers.add(username);
+            followedUsers.add(username.toLowerCase());
+          }
         }
 
         saveState();
@@ -457,6 +532,67 @@ async function handleFollow(button, userId, username) {
         button.innerHTML = `<span>Retry</span>`;
         button.title = `Error: ${errorMsg}. Click to retry.`;
         
+        showErrorNotice(errorMsg);
+      }
+    }
+  );
+}
+
+async function handleCancelRequest(button, userId, username) {
+  if (button.disabled || button.classList.contains('loading')) return;
+
+  button.classList.remove('error');
+  button.classList.add('loading');
+  button.disabled = true;
+  button.innerHTML = `<span>Cancelling...</span>`;
+  showErrorNotice(null);
+
+  chrome.runtime.sendMessage(
+    { type: "relayCancelFollowRequest", userId, username },
+    (response) => {
+      if (response && response.success) {
+        if (userId) requestedUsers.delete(String(userId));
+        if (username) {
+          requestedUsers.delete(username);
+          requestedUsers.delete(username.toLowerCase());
+        }
+
+        const u = (fansUsers || []).find(f => String(f.id) === String(userId) || f.username === username);
+        if (u) {
+          u.outgoing_request = false;
+          u.is_requested = false;
+          if (u.friendship_status) {
+            u.friendship_status.outgoing_request = false;
+          }
+        }
+
+        const card = button.closest('.user-card');
+        if (card) {
+          const badge = card.querySelector('.badge-requested');
+          if (badge) badge.remove();
+        }
+
+        button.classList.remove('loading', 'error', 'requested', 'followed');
+        button.disabled = false;
+        button.innerHTML = `<span>Follow back</span>`;
+        button.title = `Follow back @${username}`;
+
+        const newBtn = button.cloneNode(true);
+        button.parentNode.replaceChild(newBtn, button);
+        newBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleFollow(newBtn, userId, username);
+        });
+
+        saveState();
+      } else {
+        const errorMsg = response?.error || "Failed to cancel follow request";
+        button.classList.remove('loading');
+        button.classList.add('error');
+        button.disabled = false;
+        button.innerHTML = `<span>Retry</span>`;
+        button.title = `Error: ${errorMsg}. Click to retry.`;
+
         showErrorNotice(errorMsg);
       }
     }
