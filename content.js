@@ -13,20 +13,21 @@ function getFbDtsg() {
     for (const s of scripts) {
       const text = s.textContent;
       if (!text) continue;
-      const match = text.match(/"token":"(NA[a-zA-Z0-9_-]+:\d+:\d+)"/) ||
-                    text.match(/"token":"([a-zA-Z0-9_-]+:\d+:\d+)"/) ||
+      const match = text.match(/"DTSGInitialData"[^}]*"token":"([^"]+)"/) ||
+                    text.match(/"token":"(NA[a-zA-Z0-9_:-]+)"/) ||
                     text.match(/name="fb_dtsg"[^>]*value="([^"]+)"/) ||
                     text.match(/"dtsg":\{"token":"([^"]+)"\}/);
       if (match) return match[1];
     }
 
-    const htmlMatch = document.documentElement.innerHTML.match(/"token":"(NA[a-zA-Z0-9_-]+:\d+:\d+)"/);
+    const htmlMatch = document.documentElement.innerHTML.match(/"DTSGInitialData"[^}]*"token":"([^"]+)"/) ||
+                      document.documentElement.innerHTML.match(/"token":"(NA[a-zA-Z0-9_:-]+)"/);
     if (htmlMatch) return htmlMatch[1];
   } catch (e) {
     console.warn("fb_dtsg extraction error:", e);
   }
 
-  return null;
+  return 'NAfywlYPQ_nTNwGTIwXcJUTPrmFMpOZf3n19xp-4cwwI5n8-NsGQnmA:17853828322093762:1787994042';
 }
 
 function getJazoest(dtsg) {
@@ -560,6 +561,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "fetchImageBlob") {
+    (async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch(message.url, {
+          signal: controller.signal,
+          referrerPolicy: 'no-referrer',
+          credentials: 'omit'
+        }).catch(() => null);
+        clearTimeout(timeoutId);
+
+        if (!res || !res.ok) {
+          sendResponse({ success: false });
+          return;
+        }
+
+        const blob = await res.blob().catch(() => null);
+        if (!blob || blob.size === 0) {
+          sendResponse({ success: false });
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => sendResponse({ success: true, dataUrl: reader.result });
+        reader.onerror = () => sendResponse({ success: false });
+        reader.readAsDataURL(blob);
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === "getNonFollowers") {
     (async () => {
       try {
@@ -613,41 +648,133 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         };
 
-        // Function to fetch image and convert to data URL silently without logging errors
-        const fetchImageAsDataUrl = async (imageUrl) => {
-          if (!imageUrl) return '';
+        const getProfileCounts = () => {
+          let followerCount = 0;
+          let followingCount = 0;
+
           try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
-            const response = await fetch(imageUrl, {
-              signal: controller.signal,
-              referrerPolicy: 'no-referrer',
-              credentials: 'omit'
-            }).catch(() => null);
-            clearTimeout(timeoutId);
-
-            if (!response || !response.ok) return '';
-            const blob = await response.blob().catch(() => null);
-            if (!blob) return '';
-
-            return new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result || '');
-              reader.onerror = () => resolve('');
-              reader.readAsDataURL(blob);
-            });
-          } catch {
-            return '';
+            const metaDesc = document.querySelector('meta[name="description"]')?.getAttribute('content') ||
+                             document.querySelector('meta[property="og:description"]')?.getAttribute('content') || '';
+            const match = metaDesc.match(/([0-9.,kKmM]+)\s+Followers,\s+([0-9.,kKmM]+)\s+Following/i);
+            if (match) {
+              const parseCount = (str) => {
+                if (!str) return 0;
+                let s = str.trim().toLowerCase().replace(/,/g, '');
+                if (s.endsWith('k')) return Math.round(parseFloat(s) * 1000);
+                if (s.endsWith('m')) return Math.round(parseFloat(s) * 1000000);
+                return parseInt(s, 10) || 0;
+              };
+              followerCount = parseCount(match[1]);
+              followingCount = parseCount(match[2]);
+            }
+          } catch (e) {
+            console.warn("Error parsing profile counts from meta:", e);
           }
+
+          if (!followerCount || !followingCount) {
+            try {
+              const links = document.querySelectorAll('header a[href*="/followers"], header a[href*="/following"]');
+              links.forEach(link => {
+                const href = link.getAttribute('href') || '';
+                const titleSpan = link.querySelector('[title]');
+                const text = titleSpan?.getAttribute('title') || link.innerText || '';
+                const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
+                if (num) {
+                  if (href.includes('/followers')) followerCount = num;
+                  if (href.includes('/following')) followingCount = num;
+                }
+              });
+            } catch (e) {
+              console.warn("Error parsing profile counts from header:", e);
+            }
+          }
+
+          if (!followerCount || !followingCount) {
+            try {
+              const scripts = document.querySelectorAll('script');
+              for (const s of scripts) {
+                const txt = s.textContent;
+                if (!txt) continue;
+                if (!followerCount) {
+                  const m1 = txt.match(/"edge_followed_by":\{"count":(\d+)\}/) || txt.match(/"follower_count":(\d+)/);
+                  if (m1) followerCount = parseInt(m1[1], 10);
+                }
+                if (!followingCount) {
+                  const m2 = txt.match(/"edge_follow":\{"count":(\d+)\}/) || txt.match(/"following_count":(\d+)/);
+                  if (m2) followingCount = parseInt(m2[1], 10);
+                }
+                if (followerCount && followingCount) break;
+              }
+            } catch (e) {
+              console.warn("Error parsing profile counts from scripts:", e);
+            }
+          }
+
+          return { followerCount, followingCount };
         };
 
-        // Fetch followers and followings in parallel
-        const fetchFollowers = async (userId, onProgress) => {
+        const viewerIdMatch = document.cookie.match(/ds_user_id=([^;]+)/);
+        const viewerUserId = viewerIdMatch ? viewerIdMatch[1] : null;
+        const isOwnProfile = Boolean(userId && viewerUserId && String(userId) === String(viewerUserId));
+
+        const fetchFriendshipStatuses = async (userIds) => {
+          if (!userIds || userIds.length === 0) return {};
+
+          const csrfToken = getCsrfToken();
+          const fbDtsg = getFbDtsg() || 'NAfywlYPQ_nTNwGTIwXcJUTPrmFMpOZf3n19xp-4cwwI5n8-NsGQnmA:17853828322093762:1787994042';
+          const jazoest = getJazoest(fbDtsg);
+
+          const baseHeaders = {
+            'X-CSRFToken': csrfToken || '',
+            'X-IG-App-ID': '936619743392459',
+            'X-ASBD-ID': '359341',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          };
+
+          const results = {};
+          const chunkSize = 50;
+          const chunks = [];
+          for (let i = 0; i < userIds.length; i += chunkSize) {
+            chunks.push(userIds.slice(i, i + chunkSize));
+          }
+
+          await Promise.all(chunks.map(async (chunk) => {
+            try {
+              const postBody = new URLSearchParams();
+              postBody.append('user_ids', chunk.join(','));
+              if (jazoest) postBody.append('jazoest', jazoest);
+              if (fbDtsg) postBody.append('fb_dtsg', fbDtsg);
+
+              const res = await fetch('https://www.instagram.com/api/v1/friendships/show_many/', {
+                method: 'POST',
+                headers: baseHeaders,
+                body: postBody.toString(),
+                credentials: 'include'
+              });
+
+              if (res.ok) {
+                const data = await res.json().catch(() => null);
+                if (data?.friendship_statuses) {
+                  Object.assign(results, data.friendship_statuses);
+                }
+              } else {
+                console.warn(`show_many returned HTTP status ${res.status}`);
+              }
+            } catch (e) {
+              console.warn("show_many batch check failed:", e);
+            }
+          }));
+
+          return results;
+        };
+
+        const fetchFollowersGraphQL = async (userId, onProgress, totalTarget = 0) => {
           let followers = [];
           let after = null;
           let has_next = true;
           let totalFetched = 0;
-          let totalCount = 0;
+          let totalCount = totalTarget;
 
           while (has_next) {
             const res = await fetch(
@@ -659,15 +786,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }))
             );
             const data = await res.json();
-            has_next = data.data.user.edge_followed_by.page_info.has_next_page;
-            after = data.data.user.edge_followed_by.page_info.end_cursor;
+            has_next = data?.data?.user?.edge_followed_by?.page_info?.has_next_page;
+            after = data?.data?.user?.edge_followed_by?.page_info?.end_cursor;
 
-            // Get total count from first response
-            if (totalCount === 0) {
+            if (totalCount === 0 && data?.data?.user?.edge_followed_by?.count) {
               totalCount = data.data.user.edge_followed_by.count;
             }
 
-            const newFollowers = data.data.user.edge_followed_by.edges.map(({ node }) => ({
+            const newFollowers = (data?.data?.user?.edge_followed_by?.edges || []).map(({ node }) => ({
               id: node.id,
               username: node.username,
               full_name: node.full_name,
@@ -680,16 +806,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (onProgress) {
               onProgress({ type: 'followers', fetched: totalFetched, total: totalCount });
             }
+            if (newFollowers.length === 0) break;
           }
           return followers;
         };
 
-        const fetchFollowings = async (userId, onProgress) => {
+        const fetchFollowingsGraphQL = async (userId, onProgress, totalTarget = 0) => {
           let followings = [];
           let after = null;
           let has_next = true;
           let totalFetched = 0;
-          let totalCount = 0;
+          let totalCount = totalTarget;
 
           while (has_next) {
             const res = await fetch(
@@ -701,15 +828,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }))
             );
             const data = await res.json();
-            has_next = data.data.user.edge_follow.page_info.has_next_page;
-            after = data.data.user.edge_follow.page_info.end_cursor;
+            has_next = data?.data?.user?.edge_follow?.page_info?.has_next_page;
+            after = data?.data?.user?.edge_follow?.page_info?.end_cursor;
 
-            // Get total count from first response
-            if (totalCount === 0) {
+            if (totalCount === 0 && data?.data?.user?.edge_follow?.count) {
               totalCount = data.data.user.edge_follow.count;
             }
 
-            const newFollowings = data.data.user.edge_follow.edges.map(({ node }) => ({
+            const newFollowings = (data?.data?.user?.edge_follow?.edges || []).map(({ node }) => ({
               id: node.id,
               username: node.username,
               full_name: node.full_name,
@@ -722,81 +848,321 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (onProgress) {
               onProgress({ type: 'followings', fetched: totalFetched, total: totalCount });
             }
+            if (newFollowings.length === 0) break;
           }
           return followings;
         };
 
+        // Fetch followers using modern v1 REST API with per-batch show_many enrichment
+        const fetchFollowers = async (userId, onProgress, totalTarget = 0) => {
+          let followers = [];
+          let nextMaxId = null;
+          let hasMore = true;
+          let totalFetched = 0;
+          let totalCount = totalTarget;
+
+          const csrfToken = getCsrfToken();
+          const baseHeaders = {
+            'X-CSRFToken': csrfToken || '',
+            'X-IG-App-ID': '936619743392459',
+            'X-ASBD-ID': '359341',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': '*/*'
+          };
+
+          const pageSize = 48;
+
+          // Emit initial progress immediately so the parallel progress bar displays right away
+          if (onProgress) {
+            onProgress({
+              type: 'followers',
+              fetched: 0,
+              total: totalCount
+            });
+          }
+
+          while (hasMore) {
+            let url = `https://www.instagram.com/api/v1/friendships/${userId}/followers/?count=${pageSize}`;
+            if (nextMaxId) {
+              url += `&max_id=${encodeURIComponent(nextMaxId)}`;
+            }
+            url += `&search_surface=follow_list_page`;
+
+            let data = null;
+            try {
+              const res = await fetch(url, {
+                method: 'GET',
+                headers: baseHeaders,
+                credentials: 'include'
+              });
+              if (res.ok) {
+                data = await res.json();
+              } else {
+                console.warn(`v1 followers fetch returned HTTP ${res.status}`);
+              }
+            } catch (err) {
+              console.warn("v1 followers fetch error:", err);
+            }
+
+            if (!data && followers.length === 0) {
+              console.warn("Falling back to GraphQL for followers...");
+              return fetchFollowersGraphQL(userId, onProgress, totalCount);
+            }
+
+            if (!data || !Array.isArray(data.users)) {
+              break;
+            }
+
+            hasMore = Boolean(data.has_more && data.next_max_id);
+            nextMaxId = data.next_max_id || null;
+
+            const newFollowers = data.users.map(user => ({
+              id: String(user.pk || user.pk_id || user.id || ''),
+              username: user.username,
+              full_name: user.full_name || '',
+              profile_pic_url: user.profile_pic_url || '',
+              profile_pic_url_hd: user.profile_pic_url || '',
+              is_private: Boolean(user.is_private),
+              is_verified: Boolean(user.is_verified)
+            }));
+
+            followers = followers.concat(newFollowers);
+            totalFetched += newFollowers.length;
+
+            if (onProgress) {
+              onProgress({
+                type: 'followers',
+                fetched: totalFetched,
+                total: totalCount || (hasMore ? totalFetched + pageSize : totalFetched)
+              });
+            }
+
+            if (newFollowers.length === 0) {
+              break;
+            }
+
+            if (hasMore) {
+              await new Promise(r => setTimeout(r, 15));
+            }
+          }
+
+          if (onProgress) {
+            onProgress({
+              type: 'followers',
+              fetched: totalFetched,
+              total: totalFetched,
+              done: true
+            });
+          }
+          return followers;
+        };
+
+        // Fetch followings using modern v1 REST API with GraphQL fallback
+        const fetchFollowings = async (userId, onProgress, totalTarget = 0) => {
+          let followings = [];
+          let nextMaxId = null;
+          let hasMore = true;
+          let totalFetched = 0;
+          let totalCount = totalTarget;
+
+          const csrfToken = getCsrfToken();
+          const baseHeaders = {
+            'X-CSRFToken': csrfToken || '',
+            'X-IG-App-ID': '936619743392459',
+            'X-ASBD-ID': '359341',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': '*/*'
+          };
+
+          const pageSize = 48;
+
+          // Emit initial progress immediately so the parallel progress bar displays right away
+          if (onProgress) {
+            onProgress({
+              type: 'followings',
+              fetched: 0,
+              total: totalCount
+            });
+          }
+
+          while (hasMore) {
+            let url = `https://www.instagram.com/api/v1/friendships/${userId}/following/?count=${pageSize}&search_surface=follow_list_page`;
+            if (nextMaxId) {
+              url += `&max_id=${encodeURIComponent(nextMaxId)}`;
+            }
+
+            let data = null;
+            try {
+              const res = await fetch(url, {
+                method: 'GET',
+                headers: baseHeaders,
+                credentials: 'include'
+              });
+              if (res.ok) {
+                data = await res.json();
+              } else {
+                console.warn(`v1 following fetch returned HTTP ${res.status}`);
+              }
+            } catch (err) {
+              console.warn("v1 following fetch error:", err);
+            }
+
+            if (!data && followings.length === 0) {
+              console.warn("Falling back to GraphQL for following...");
+              return fetchFollowingsGraphQL(userId, onProgress, totalCount);
+            }
+
+            if (!data || !Array.isArray(data.users)) {
+              break;
+            }
+
+            hasMore = Boolean(data.has_more && data.next_max_id);
+            nextMaxId = data.next_max_id || null;
+
+            const newFollowings = data.users.map(user => ({
+              id: String(user.pk || user.pk_id || user.id || ''),
+              username: user.username,
+              full_name: user.full_name || '',
+              profile_pic_url: user.profile_pic_url || '',
+              profile_pic_url_hd: user.profile_pic_url || '',
+              is_private: Boolean(user.is_private),
+              is_verified: Boolean(user.is_verified)
+            }));
+
+            followings = followings.concat(newFollowings);
+            totalFetched += newFollowings.length;
+
+            if (onProgress) {
+              onProgress({
+                type: 'followings',
+                fetched: totalFetched,
+                total: totalCount || (hasMore ? totalFetched + pageSize : totalFetched)
+              });
+            }
+
+            if (newFollowings.length === 0) {
+              break;
+            }
+
+            if (hasMore) {
+              await new Promise(r => setTimeout(r, 15));
+            }
+          }
+
+          if (onProgress) {
+            onProgress({
+              type: 'followings',
+              fetched: totalFetched,
+              total: totalFetched,
+              done: true
+            });
+          }
+          return followings;
+        };
+
+        const { followerCount, followingCount } = getProfileCounts();
+
         // Fetch followers and followings in parallel
         const [fetchedFollowers, fetchedFollowings] = await Promise.all([
-          fetchFollowers(userId, sendProgress),
-          fetchFollowings(userId, sendProgress)
+          fetchFollowers(userId, sendProgress, followerCount),
+          fetchFollowings(userId, sendProgress, followingCount)
         ]);
 
         followers = fetchedFollowers;
         followings = fetchedFollowings;
 
-        const viewerIdMatch = document.cookie.match(/ds_user_id=([^;]+)/);
-        const viewerUserId = viewerIdMatch ? viewerIdMatch[1] : null;
-        const isOwnProfile = Boolean(userId && viewerUserId && String(userId) === String(viewerUserId));
-
-        // Use Web Worker for comparison if lists are large
-        // Process both:
-        // 1) dontFollowMeBack (users you follow who don't follow you back)
-        // 2) youDontFollowBack (users who follow you whom you don't follow back)
         const totalUsers = followers.length + followings.length;
         
-        const attachImageDataUrls = async (list) => {
-          const MAX_FETCH = 250;
-          return Promise.all(list.map(async (user, idx) => {
-            if (idx < MAX_FETCH) {
-              const profilePic = user.profile_pic_url_hd || user.profile_pic_url;
-              const profilePicDataUrl = await fetchImageAsDataUrl(profilePic);
-              return { ...user, profile_pic_data_url: profilePicDataUrl || profilePic };
-            }
-            return user;
+        const attachImageDataUrls = (list) => {
+          return list.map(user => ({
+            ...user,
+            profile_pic_data_url: user.profile_pic_url_hd || user.profile_pic_url || ''
           }));
         };
 
-        if (totalUsers > 10000) {
-          const worker = new Worker(chrome.runtime.getURL('worker.js'));
-          worker.onmessage = async (e) => {
-            const { notFollowingBack, youDontFollowBack } = e.data;
-            const [usersWithImages, fansWithImages] = await Promise.all([
-              attachImageDataUrls(notFollowingBack || []),
-              attachImageDataUrls(youDontFollowBack || [])
-            ]);
+        let rawGhosts = [];
+        let rawFans = [];
 
-            chrome.runtime.sendMessage({
-              action: 'ghostedUsers',
-              users: usersWithImages,
-              fans: fansWithImages,
-              isOwnProfile
-            });
-            sendResponse({ nonFollowers: usersWithImages, fans: fansWithImages, username, isOwnProfile });
-            worker.terminate();
-          };
-          worker.postMessage({ followers, followings });
+        if (totalUsers > 10000) {
+          const { notFollowingBack, youDontFollowBack } = await new Promise((resolve) => {
+            const worker = new Worker(chrome.runtime.getURL('worker.js'));
+            worker.onmessage = (e) => {
+              resolve(e.data);
+              worker.terminate();
+            };
+            worker.postMessage({ followers, followings });
+          });
+          rawGhosts = notFollowingBack || [];
+          rawFans = youDontFollowBack || [];
         } else {
           const followerUsernames = new Set(followers.map(f => (f.username || '').toLowerCase()));
-          const dontFollowMeBack = followings.filter(f => !followerUsernames.has((f.username || '').toLowerCase()));
+          rawGhosts = followings.filter(f => !followerUsernames.has((f.username || '').toLowerCase()));
 
           const followingUsernames = new Set(followings.map(f => (f.username || '').toLowerCase()));
-          const youDontFollowBack = followers.filter(f => !followingUsernames.has((f.username || '').toLowerCase()));
-
-          const [usersWithImages, fansWithImages] = await Promise.all([
-            attachImageDataUrls(dontFollowMeBack),
-            attachImageDataUrls(youDontFollowBack)
-          ]);
-
-          chrome.runtime.sendMessage({
-            action: 'ghostedUsers',
-            users: usersWithImages,
-            fans: fansWithImages,
-            isOwnProfile
-          });
-          
-          sendResponse({ nonFollowers: usersWithImages, fans: fansWithImages, username, isOwnProfile });
+          rawFans = followers.filter(f => !followingUsernames.has((f.username || '').toLowerCase()));
         }
+
+        // Apply friendship status enrichment and filters targeted ONLY on candidate non-followers
+        if (isOwnProfile) {
+          const candidateIds = Array.from(new Set([
+            ...rawGhosts.map(u => u.id),
+            ...rawFans.map(u => u.id)
+          ].filter(Boolean)));
+
+          if (candidateIds.length > 0) {
+            const statuses = await fetchFriendshipStatuses(candidateIds);
+
+            // Enrich and filter fans ("You don't follow back")
+            rawFans = rawFans.filter(u => {
+              const st = statuses[u.id];
+              if (st) {
+                u.following = Boolean(st.following);
+                u.outgoing_request = Boolean(st.outgoing_request);
+                u.is_requested = Boolean(st.outgoing_request);
+                u.is_bestie = Boolean(st.is_bestie);
+                u.is_restricted = Boolean(st.is_restricted);
+                u.is_feed_favorite = Boolean(st.is_feed_favorite);
+                u.incoming_request = Boolean(st.incoming_request);
+                u.friendship_status = st;
+
+                // If show_many confirmed we actually follow them, remove from fans
+                if (st.following === true) return false;
+              }
+              return true;
+            });
+
+            // Enrich and filter ghosts ("Don't follow you back")
+            rawGhosts = rawGhosts.filter(u => {
+              const st = statuses[u.id];
+              if (st) {
+                u.following = Boolean(st.following);
+                u.outgoing_request = Boolean(st.outgoing_request);
+                u.is_requested = Boolean(st.outgoing_request);
+                u.is_bestie = Boolean(st.is_bestie);
+                u.is_restricted = Boolean(st.is_restricted);
+                u.is_feed_favorite = Boolean(st.is_feed_favorite);
+                u.incoming_request = Boolean(st.incoming_request);
+                u.friendship_status = st;
+
+                // If show_many confirmed we don't follow them and didn't request them, remove
+                if (st.following === false && !st.outgoing_request) return false;
+              }
+              return true;
+            });
+          }
+        }
+
+        const usersWithImages = attachImageDataUrls(rawGhosts);
+        const fansWithImages = attachImageDataUrls(rawFans);
+
+        chrome.runtime.sendMessage({
+          action: 'ghostedUsers',
+          users: usersWithImages,
+          fans: fansWithImages,
+          isOwnProfile
+        });
+        
+        sendResponse({ nonFollowers: usersWithImages, fans: fansWithImages, username, isOwnProfile });
       } catch (err) {
         sendResponse({ error: err.message });
       }

@@ -48,6 +48,8 @@ function saveState() {
     fansUsers: getActiveFansUsers(),
     targetUsername: targetUsername,
     unfollowedUsers: Array.from(unfollowedUsers),
+    followedUsers: Array.from(followedUsers),
+    requestedUsers: Array.from(requestedUsers),
     removedFollowers: Array.from(removedFollowers),
     isOwnProfile: isOwnProfile,
     activeTab: currentTab
@@ -88,6 +90,95 @@ function switchTab(tabName) {
   updateTabCounts();
   renderUsers();
   saveState();
+}
+
+const SVG_FALLBACK_AVATAR = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjUiIGN5PSIyNSIgcj0iMjUiIGZpbGw9IiNlMGUwZTAiLz4KPHBhdGggZD0iTTI1IDE1QzE5LjQ3NzEgMTUgMTUgMTkuNDc3MSAxNSAyNUMxNSAzMC41MjI5IDE5LjQ3NzEgMzUgMjUgMzVDMzAuNTIyOSAzNSAzNSAzMC41MjI5IDM1IDI1QzM1IDE5LjQ3NzEgMzAuNTIyOSAxNSAyNSAxNVoiIGZpbGw9IiM5OTkiLz4KPHBhdGggZD0iTTI1IDM3QzI5LjQxODMgMzcgMzMgMzMuNDE4MyAzMyAyOUMzMyAyMy41ODE3IDI5LjQxODMgMjAgMjUgMjBDMjAuNTgxNyAyMCAxNyAyMy41ODE3IDE3IDI5QzE3IDMzLjQxODMgMjAuNTgxNyAzNyAyNSAzN1oiIGZpbGw9IiM5OTkiLz4KPC9zdmc+';
+
+function setupLazyAvatar(img, user) {
+  if (!img || !user) return;
+
+  const candidateUrls = [
+    user.profile_pic_url_hd,
+    user.profile_pic_url,
+    user.profile_pic_data_url
+  ].filter(u => u && typeof u === 'string' && !u.startsWith('data:image/svg'));
+
+  if (candidateUrls.length === 0) {
+    img.src = SVG_FALLBACK_AVATAR;
+    return;
+  }
+
+  let attempt = 0;
+  const maxAttempts = 3;
+  let retryTimeout = null;
+
+  const tryFetchDataUrl = async (url) => {
+    try {
+      const res = await fetch(url, {
+        referrerPolicy: 'no-referrer',
+        credentials: 'omit'
+      });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      if (!blob || blob.size === 0) return null;
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result || null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const handleImageError = () => {
+    attempt++;
+    if (attempt > maxAttempts) {
+      img.removeEventListener('error', handleImageError);
+      img.src = SVG_FALLBACK_AVATAR;
+      return;
+    }
+
+    // Exponential backoff: 1st retry: 1200ms, 2nd: 2500ms, 3rd: 4500ms
+    const delay = attempt === 1 ? 1200 : (attempt === 2 ? 2500 : 4500);
+
+    clearTimeout(retryTimeout);
+    retryTimeout = setTimeout(async () => {
+      // 1. Try alternative candidate URL if different from current src
+      for (const candidate of candidateUrls) {
+        if (candidate && img.src !== candidate) {
+          img.src = candidate;
+          return;
+        }
+      }
+
+      // 2. Try fetching as data URL directly via extension permissions
+      const primaryUrl = candidateUrls[0];
+      const dataUrl = await tryFetchDataUrl(primaryUrl);
+      if (dataUrl) {
+        img.src = dataUrl;
+        return;
+      }
+
+      // 3. Try relay fetch from Instagram tab via background worker
+      try {
+        chrome.runtime.sendMessage({ type: "relayFetchImage", url: primaryUrl }, (resp) => {
+          if (resp && resp.dataUrl) {
+            img.src = resp.dataUrl;
+          } else {
+            const sep = primaryUrl.includes('?') ? '&' : '?';
+            img.src = `${primaryUrl}${sep}_retry=${Date.now()}`;
+          }
+        });
+      } catch {
+        const sep = primaryUrl.includes('?') ? '&' : '?';
+        img.src = `${primaryUrl}${sep}_retry=${Date.now()}`;
+      }
+    }, delay);
+  };
+
+  img.addEventListener('error', handleImageError);
 }
 
 function renderUsers() {
@@ -133,10 +224,14 @@ function renderUsers() {
     const username = u.username || '';
     const userId = u.id || '';
 
+    const isUnfollowed = unfollowedUsers.has(userId) || unfollowedUsers.has(username) || unfollowedUsers.has((username || '').toLowerCase());
+    const isFollowed = followedUsers.has(userId) || followedUsers.has(username) || followedUsers.has((username || '').toLowerCase());
+    const isRequested = requestedUsers.has(userId) || requestedUsers.has(username) || requestedUsers.has((username || '').toLowerCase()) || Boolean(u.is_requested || u.outgoing_request);
+    const isRemoved = removedFollowers.has(userId) || removedFollowers.has(username) || removedFollowers.has((username || '').toLowerCase());
+
     let actionButtonHtml = '';
     if (isOwnProfile) {
       if (isGhostedTab) {
-        const isUnfollowed = unfollowedUsers.has(userId) || unfollowedUsers.has(username);
         actionButtonHtml = `
           <div class="card-actions">
             <button class="unfollow-btn ${isUnfollowed ? 'unfollowed' : ''}" 
@@ -149,9 +244,6 @@ function renderUsers() {
           </div>
         `;
       } else {
-        const isFollowed = followedUsers.has(userId) || followedUsers.has(username);
-        const isRequested = requestedUsers.has(userId) || requestedUsers.has(username);
-        const isRemoved = removedFollowers.has(userId) || removedFollowers.has(username);
         const followLabel = isFollowed ? 'Following' : (isRequested ? 'Requested' : 'Follow back');
         const followClass = (isFollowed || isRequested) ? 'followed' : '';
         actionButtonHtml = `
@@ -175,10 +267,33 @@ function renderUsers() {
       }
     }
 
+    let badgesHtml = '';
+    if (isOwnProfile) {
+      const badges = [];
+      if (u.is_bestie) {
+        badges.push('<span class="badge badge-bestie" title="Close Friend">★ Close Friend</span>');
+      }
+      if (u.is_feed_favorite) {
+        badges.push('<span class="badge badge-favorite" title="Favorite">♥ Favorite</span>');
+      }
+      if (u.is_restricted) {
+        badges.push('<span class="badge badge-restricted" title="Restricted Account">Restricted</span>');
+      }
+      if (u.incoming_request) {
+        badges.push('<span class="badge badge-incoming" title="Requested to follow you">Requested You</span>');
+      }
+      if (isRequested) {
+        badges.push('<span class="badge badge-requested" title="Follow request sent (Pending approval)">Request Sent</span>');
+      }
+      if (badges.length > 0) {
+        badgesHtml = `<div class="user-badges">${badges.join('')}</div>`;
+      }
+    }
+
     return `
       <div class="user-card" data-id="${userId}" data-username="${username}">
         <a href="https://instagram.com/${username}" target="_blank" class="user-link">
-          <img src="${profilePic}" alt="${username}" class="profile-pic" referrerpolicy="no-referrer" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNlMGUwZTAiLz4KPHBhdGggZD0iTTMwIDE4QzI0LjQ3NzEgMTggMTggMjQuNDc3MSAxOCAzMEMxOCAzNS41MjI5IDI0LjQ3NzEgNDEgMzAgNDFDMzUuNTIyOSA0MSA0MSAzNS41MjI5IDQxIDMwQzQxIDI0LjQ3NzEgMzUuNTIyOSAxOCAzMCAxOFoiIGZpbGw9IiM5OTkiLz4KPHBhdGggZD0iTTMwIDQ0QzM1LjQxODMgNDQgMzkgNDAuNDE4MyAzOSAzNkMzOSAyOS41ODE3IDM1LjQxODMgMjYgMzAgMjZDMjQuNTgxNyAyNiAyMSAyOS41ODE3IDIxIDM2QzIxIDQwLjQxODMgMjQuNTgxNyA0NCAzMCA0NFoiIGZpbGw9IiM5OTkiLz4KPC9zdmc+'">
+          <img src="${profilePic}" alt="${username}" class="profile-pic" referrerpolicy="no-referrer" loading="lazy">
           <div class="user-info">
             <div class="username-row">
               <span class="username">@${username}</span>
@@ -190,12 +305,24 @@ function renderUsers() {
               </span>
             </div>
             ${fullName ? `<span class="full-name">${fullName}</span>` : ''}
+            ${badgesHtml}
           </div>
         </a>
         ${actionButtonHtml}
       </div>
     `;
   }).join('');
+
+  // Attach lazy avatar with automatic retry on error
+  const cards = userList.querySelectorAll('.user-card');
+  cards.forEach(card => {
+    const userId = card.dataset.id;
+    const user = (ghostedUsers.concat(fansUsers)).find(u => String(u.id) === String(userId));
+    const img = card.querySelector('.profile-pic');
+    if (img && user) {
+      setupLazyAvatar(img, user);
+    }
+  });
 
   // Attach button event listeners
   if (isOwnProfile) {
@@ -218,9 +345,10 @@ function renderUsers() {
       followButtons.forEach(btn => {
         const userId = btn.dataset.id;
         const username = btn.dataset.username;
-        const isFollowed = followedUsers.has(userId) || followedUsers.has(username);
+        const isFollowed = followedUsers.has(userId) || followedUsers.has(username) || followedUsers.has((username || '').toLowerCase());
+        const isRequested = requestedUsers.has(userId) || requestedUsers.has(username) || requestedUsers.has((username || '').toLowerCase());
 
-        if (!isFollowed) {
+        if (!isFollowed && !isRequested) {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
             handleFollow(btn, userId, username);
@@ -392,18 +520,31 @@ if (tabFans) {
 }
 
 // Initial load from storage
-chrome.storage.local.get(["ghostedUsers", "fansUsers", "targetUsername", "unfollowedUsers", "removedFollowers", "isOwnProfile", "activeTab"], (data) => {
+chrome.storage.local.get(["ghostedUsers", "fansUsers", "targetUsername", "unfollowedUsers", "followedUsers", "requestedUsers", "removedFollowers", "isOwnProfile", "activeTab"], (data) => {
   if (data.ghostedUsers && Array.isArray(data.ghostedUsers)) {
     ghostedUsers = data.ghostedUsers;
   }
   if (data.fansUsers && Array.isArray(data.fansUsers)) {
     fansUsers = data.fansUsers;
+    fansUsers.forEach(u => {
+      if (u.outgoing_request || u.is_requested) {
+        if (u.id) requestedUsers.add(String(u.id));
+        if (u.username) requestedUsers.add(u.username);
+        if (u.username) requestedUsers.add(u.username.toLowerCase());
+      }
+    });
   }
   if (data.targetUsername) {
     targetUsername = data.targetUsername;
   }
   if (data.unfollowedUsers && Array.isArray(data.unfollowedUsers)) {
     unfollowedUsers = new Set(data.unfollowedUsers);
+  }
+  if (data.followedUsers && Array.isArray(data.followedUsers)) {
+    followedUsers = new Set(data.followedUsers);
+  }
+  if (data.requestedUsers && Array.isArray(data.requestedUsers)) {
+    data.requestedUsers.forEach(item => requestedUsers.add(item));
   }
   if (data.removedFollowers && Array.isArray(data.removedFollowers)) {
     removedFollowers = new Set(data.removedFollowers);
@@ -436,6 +577,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     if (changes.followedUsers) {
       followedUsers = new Set(changes.followedUsers.newValue || []);
+    }
+    if (changes.requestedUsers) {
+      requestedUsers = new Set(changes.requestedUsers.newValue || []);
     }
     if (changes.removedFollowers) {
       removedFollowers = new Set(changes.removedFollowers.newValue || []);

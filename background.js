@@ -114,4 +114,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+
+  // Relay fetchImage message to an Instagram tab if needed
+  if (message.type === "relayFetchImage") {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ url: "*://*.instagram.com/*" });
+        if (!tabs || tabs.length === 0) {
+          sendResponse({ success: false, error: "No open Instagram tab." });
+          return;
+        }
+        const targetTab = tabs.find(t => t.active) || tabs[0];
+        chrome.tabs.sendMessage(
+          targetTab.id,
+          { type: "fetchImageBlob", url: message.url },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              sendResponse({ success: false });
+            } else {
+              sendResponse(response || { success: false });
+            }
+          }
+        );
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
 });

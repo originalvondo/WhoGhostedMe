@@ -64,6 +64,8 @@ function saveState() {
     fansUsers: getActiveFansUsers(),
     targetUsername: currentUsername,
     unfollowedUsers: Array.from(unfollowedUsers),
+    followedUsers: Array.from(followedUsers),
+    requestedUsers: Array.from(requestedUsers),
     removedFollowers: Array.from(removedFollowers),
     isOwnProfile: isOwnProfile,
     activeTab: currentTab
@@ -126,6 +128,108 @@ function switchTab(tabName) {
   saveState();
 }
 
+const SVG_FALLBACK_AVATAR = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjUiIGN5PSIyNSIgcj0iMjUiIGZpbGw9IiNlMGUwZTAiLz4KPHBhdGggZD0iTTI1IDE1QzE5LjQ3NzEgMTUgMTUgMTkuNDc3MSAxNSAyNUMxNSAzMC41MjI5IDE5LjQ3NzEgMzUgMjUgMzVDMzAuNTIyOSAzNSAzNSAzMC41MjI5IDM1IDI1QzM1IDE5LjQ3NzEgMzAuNTIyOSAxNSAyNSAxNVoiIGZpbGw9IiM5OTkiLz4KPHBhdGggZD0iTTI1IDM3QzI5LjQxODMgMzcgMzMgMzMuNDE4MyAzMyAyOUMzMyAyMy41ODE3IDI5LjQxODMgMjAgMjUgMjBDMjAuNTgxNyAyMCAxNyAyMy41ODE3IDE3IDI5QzE3IDMzLjQxODMgMjAuNTgxNyAzNyAyNSAzN1oiIGZpbGw9IiM5OTkiLz4KPC9zdmc+';
+
+function setupLazyAvatar(img, user) {
+  if (!img || !user) return;
+
+  const candidateUrls = [
+    user.profile_pic_url_hd,
+    user.profile_pic_url,
+    user.profile_pic_data_url
+  ].filter(u => u && typeof u === 'string' && !u.startsWith('data:image/svg'));
+
+  if (candidateUrls.length === 0) {
+    img.src = SVG_FALLBACK_AVATAR;
+    return;
+  }
+
+  let attempt = 0;
+  const maxAttempts = 3;
+  let retryTimeout = null;
+
+  const tryFetchDataUrl = async (url) => {
+    try {
+      const res = await fetch(url, {
+        referrerPolicy: 'no-referrer',
+        credentials: 'omit'
+      });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      if (!blob || blob.size === 0) return null;
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result || null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const handleImageError = () => {
+    attempt++;
+    if (attempt > maxAttempts) {
+      img.removeEventListener('error', handleImageError);
+      img.src = SVG_FALLBACK_AVATAR;
+      return;
+    }
+
+    // Exponential backoff: 1st retry: 1200ms, 2nd: 2500ms, 3rd: 4500ms
+    const delay = attempt === 1 ? 1200 : (attempt === 2 ? 2500 : 4500);
+
+    clearTimeout(retryTimeout);
+    retryTimeout = setTimeout(async () => {
+      // 1. Try alternative candidate URL if different from current src
+      for (const candidate of candidateUrls) {
+        if (candidate && img.src !== candidate) {
+          img.src = candidate;
+          return;
+        }
+      }
+
+      // 2. Try fetching as data URL directly via extension permissions
+      const primaryUrl = candidateUrls[0];
+      const dataUrl = await tryFetchDataUrl(primaryUrl);
+      if (dataUrl) {
+        img.src = dataUrl;
+        return;
+      }
+
+      // 3. Try relay fetch from Instagram tab if available
+      try {
+        const relayMsg = { type: "fetchImageBlob", url: primaryUrl };
+        const relayCallback = (resp) => {
+          if (resp && resp.dataUrl) {
+            img.src = resp.dataUrl;
+          } else {
+            const sep = primaryUrl.includes('?') ? '&' : '?';
+            img.src = `${primaryUrl}${sep}_retry=${Date.now()}`;
+          }
+        };
+
+        if (typeof activeTabId === 'number' && activeTabId) {
+          chrome.tabs.sendMessage(activeTabId, relayMsg, (resp) => {
+            if (chrome.runtime.lastError || !resp) {
+              chrome.runtime.sendMessage({ type: "relayFetchImage", url: primaryUrl }, relayCallback);
+            } else {
+              relayCallback(resp);
+            }
+          });
+        } else {
+          chrome.runtime.sendMessage({ type: "relayFetchImage", url: primaryUrl }, relayCallback);
+        }
+      } catch {
+        const sep = primaryUrl.includes('?') ? '&' : '?';
+        img.src = `${primaryUrl}${sep}_retry=${Date.now()}`;
+      }
+    }, delay);
+  };
+
+  img.addEventListener('error', handleImageError);
+}
+
 function renderCurrentList() {
   resultList.innerHTML = '';
   showErrorNotice(null);
@@ -150,10 +254,14 @@ function renderCurrentList() {
     const username = user.username || '';
     const userId = user.id || '';
     
+    const isUnfollowed = unfollowedUsers.has(userId) || unfollowedUsers.has(username) || unfollowedUsers.has((username || '').toLowerCase());
+    const isFollowed = followedUsers.has(userId) || followedUsers.has(username) || followedUsers.has((username || '').toLowerCase());
+    const isRequested = requestedUsers.has(userId) || requestedUsers.has(username) || requestedUsers.has((username || '').toLowerCase()) || Boolean(user.is_requested || user.outgoing_request);
+    const isRemoved = removedFollowers.has(userId) || removedFollowers.has(username) || removedFollowers.has((username || '').toLowerCase());
+
     let actionButtonHtml = '';
     if (isOwnProfile) {
       if (isGhostedTab) {
-        const isUnfollowed = unfollowedUsers.has(userId) || unfollowedUsers.has(username);
         actionButtonHtml = `
           <div class="card-actions">
             <button class="unfollow-btn ${isUnfollowed ? 'unfollowed' : ''}" 
@@ -166,9 +274,6 @@ function renderCurrentList() {
           </div>
         `;
       } else {
-        const isFollowed = followedUsers.has(userId) || followedUsers.has(username);
-        const isRequested = requestedUsers.has(userId) || requestedUsers.has(username);
-        const isRemoved = removedFollowers.has(userId) || removedFollowers.has(username);
         const followLabel = isFollowed ? 'Following' : (isRequested ? 'Requested' : 'Follow back');
         const followClass = (isFollowed || isRequested) ? 'followed' : '';
         actionButtonHtml = `
@@ -192,6 +297,29 @@ function renderCurrentList() {
       }
     }
 
+    let badgesHtml = '';
+    if (isOwnProfile) {
+      const badges = [];
+      if (user.is_bestie) {
+        badges.push('<span class="badge badge-bestie" title="Close Friend">★ Close Friend</span>');
+      }
+      if (user.is_feed_favorite) {
+        badges.push('<span class="badge badge-favorite" title="Favorite">♥ Favorite</span>');
+      }
+      if (user.is_restricted) {
+        badges.push('<span class="badge badge-restricted" title="Restricted Account">Restricted</span>');
+      }
+      if (user.incoming_request) {
+        badges.push('<span class="badge badge-incoming" title="Requested to follow you">Requested You</span>');
+      }
+      if (isRequested) {
+        badges.push('<span class="badge badge-requested" title="Follow request sent (Pending approval)">Request Sent</span>');
+      }
+      if (badges.length > 0) {
+        badgesHtml = `<div class="user-badges">${badges.join('')}</div>`;
+      }
+    }
+
     li.innerHTML = `
       <a href="https://instagram.com/${username}" target="_blank" class="user-link">
         <img src="${profilePic}" alt="${username}" class="profile-pic" referrerpolicy="no-referrer" loading="lazy" data-fallback="true">
@@ -206,23 +334,16 @@ function renderCurrentList() {
             </span>
           </div>
           ${fullName ? `<span class="full-name">${fullName}</span>` : ''}
+          ${badgesHtml}
         </div>
       </a>
       ${actionButtonHtml}
     `;
     
-    // Fallback for avatar image load error
+    // Attach lazy avatar with automatic retry on error
     const img = li.querySelector('.profile-pic');
-    if (img && profilePic && !user.profile_pic_data_url) {
-      img.addEventListener('error', function fallback() {
-        const altPic = user.profile_pic_url || user.profile_pic_url_hd;
-        if (altPic && this.src !== altPic) {
-          this.src = altPic;
-        } else {
-          this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjUiIGN5PSIyNSIgcj0iMjUiIGZpbGw9IiNlMGUwZTAiLz4KPHBhdGggZD0iTTI1IDE1QzE5LjQ3NzEgMTUgMTUgMTkuNDc3MSAxNSAyNUMxNSAzMC41MjI5IDE5LjQ3NzEgMzUgMjUgMzVDMzAuNTIyOSAzNSAzNSAzMC41MjI5IDM1IDI1QzM1IDE5LjQ3NzEgMzAuNTIyOSAxNSAyNSAxNVoiIGZpbGw9IiM5OTkiLz4KPHBhdGggZD0iTTI1IDM3QzI5LjQxODMgMzcgMzMgMzMuNDE4MyAzMyAyOUMzMyAyMy41ODE3IDI5LjQxODMgMjAgMjUgMjBDMjAuNTgxNyAyMCAxNyAyMy41ODE3IDE3IDI5QzE3IDMzLjQxODMgMjAuNTgxNyAzNyAyNSAzN1oiIGZpbGw9IiM5OTkiLz4KPC9zdmc+';
-          this.removeEventListener('error', fallback);
-        }
-      });
+    if (img) {
+      setupLazyAvatar(img, user);
     }
 
     // Attach button click handler
@@ -238,8 +359,9 @@ function renderCurrentList() {
         }
       } else {
         const followBtn = li.querySelector('.follow-btn');
-        const isFollowed = followedUsers.has(userId) || followedUsers.has(username);
-        if (followBtn && !isFollowed) {
+        const isFollowed = followedUsers.has(userId) || followedUsers.has(username) || followedUsers.has((username || '').toLowerCase());
+        const isRequested = requestedUsers.has(userId) || requestedUsers.has(username) || requestedUsers.has((username || '').toLowerCase()) || Boolean(user.is_requested || user.outgoing_request);
+        if (followBtn && !isFollowed && !isRequested) {
           followBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             handleFollowClick(followBtn, userId, username);
@@ -500,12 +622,22 @@ chrome.runtime.onMessage.addListener((message) => {
     progressContainer.style.display = 'block';
     
     if (message.type === 'followers') {
-      followersProgressText.textContent = `${message.fetched} / ${message.total || '?'} loaded`;
-      const percentage = message.total ? Math.min((message.fetched / message.total) * 100, 100) : Math.min(message.fetched / 100 * 100, 100);
+      const totalDisplay = (message.total && message.total > 0) ? message.total : '?';
+      followersProgressText.textContent = `${message.fetched} / ${totalDisplay} loaded`;
+      const percentage = message.done
+        ? 100
+        : ((message.total && message.total > 0)
+            ? Math.min((message.fetched / message.total) * 100, 100)
+            : Math.min((message.fetched / (message.fetched + 48)) * 100, 92));
       followersProgress.style.width = `${percentage}%`;
     } else if (message.type === 'followings') {
-      followingsProgressText.textContent = `${message.fetched} / ${message.total || '?'} loaded`;
-      const percentage = message.total ? Math.min((message.fetched / message.total) * 100, 100) : Math.min(message.fetched / 100 * 100, 100);
+      const totalDisplay = (message.total && message.total > 0) ? message.total : '?';
+      followingsProgressText.textContent = `${message.fetched} / ${totalDisplay} loaded`;
+      const percentage = message.done
+        ? 100
+        : ((message.total && message.total > 0)
+            ? Math.min((message.fetched / message.total) * 100, 100)
+            : Math.min((message.fetched / (message.fetched + 48)) * 100, 92));
       followingsProgress.style.width = `${percentage}%`;
     }
   }
@@ -548,6 +680,14 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     followedUsers = new Set();
     requestedUsers = new Set();
     chrome.storage.local.remove(['unfollowedUsers', 'removedFollowers', 'followedUsers', 'requestedUsers']);
+
+    fansUsers.forEach(u => {
+      if (u.outgoing_request || u.is_requested) {
+        if (u.id) requestedUsers.add(String(u.id));
+        if (u.username) requestedUsers.add(u.username);
+        if (u.username) requestedUsers.add(u.username.toLowerCase());
+      }
+    });
 
     progressContainer.style.display = "none";
     if (tabsContainer) tabsContainer.style.display = "flex";
