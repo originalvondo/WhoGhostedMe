@@ -1,6 +1,61 @@
 // content.js - WhoGhostedMe V2.0 Clean-Slate Engine
 // Live Instagram GraphQL & Friendship Endpoint Manager
 
+// Centralized Diagnostic Logger
+const Logger = {
+  logs: [],
+  maxLogs: 1000,
+  add(level, message, details = null) {
+    const entry = {
+      id: 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+      timestamp: new Date().toISOString(),
+      timeStr: new Date().toLocaleTimeString('en-US', { hour12: false }) + '.' + String(new Date().getMilliseconds()).padStart(3, '0'),
+      level: (level || 'info').toLowerCase(),
+      message: String(message || ''),
+      details: details ? (typeof details === 'object' ? JSON.stringify(details, null, 2) : String(details)) : null
+    };
+
+    this.logs.push(entry);
+    if (this.logs.length > this.maxLogs) this.logs.shift();
+
+    // Broadcast to popup if open
+    try {
+      chrome.runtime.sendMessage({
+        action: 'new_log_entry',
+        log: entry
+      }, () => { chrome.runtime.lastError; });
+    } catch (e) {}
+
+    // Persist in chrome.storage.local
+    try {
+      chrome.storage.local.set({ whg_debug_logs: this.logs.slice(-300) });
+    } catch (e) {}
+
+    return entry;
+  },
+  info(msg, det) { return this.add('info', msg, det); },
+  query(msg, det) { return this.add('query', msg, det); },
+  warn(msg, det) { return this.add('warn', msg, det); },
+  error(msg, det) { return this.add('error', msg, det); },
+  success(msg, det) { return this.add('success', msg, det); },
+  clear() {
+    this.logs = [];
+    try {
+      chrome.storage.local.set({ whg_debug_logs: [] });
+      chrome.runtime.sendMessage({ action: 'logs_cleared' }, () => { chrome.runtime.lastError; });
+    } catch (e) {}
+  }
+};
+
+// Initialize logs from local storage if existing
+try {
+  chrome.storage.local.get(['whg_debug_logs'], (res) => {
+    if (Array.isArray(res?.whg_debug_logs)) {
+      Logger.logs = res.whg_debug_logs;
+    }
+  });
+} catch (e) {}
+
 function getCsrfToken() {
   const match = document.cookie.match(/csrftoken=([^;]+)/);
   return match ? match[1] : '';
@@ -121,6 +176,7 @@ async function resolveUserIdViaSearch(targetUsername) {
   body.append('doc_id', '27706427925724183');
 
   try {
+    Logger.query(`Resolving numeric user ID for @${cleanUsername} via PolarisSearchBoxRefetchableQuery (doc_id: 27706427925724183)...`);
     const res = await fetch('https://www.instagram.com/api/graphql', {
       method: 'POST',
       headers: {
@@ -136,14 +192,16 @@ async function resolveUserIdViaSearch(targetUsername) {
     });
 
     const data = await res.json().catch(() => null);
-    console.log('[WhoGhostedMe] PolarisSearchBoxRefetchableQuery response:', res.status, data);
+    if (!res.ok) {
+      Logger.warn(`PolarisSearchBoxRefetchableQuery returned HTTP ${res.status}`, { status: res.status });
+    }
 
     const userList = data?.data?.xdt_api__v1__fbsearch__topsearch_connection?.users || [];
     for (const item of userList) {
       const u = item?.user || item;
       if ((u?.username || '').toLowerCase() === cleanUsername) {
         const pk = String(u.pk || u.id || u.pk_id || '');
-        console.log('[WhoGhostedMe] Matched user PK from search:', pk);
+        Logger.success(`Resolved numeric ID ${pk} for @${cleanUsername} via GraphQL topsearch.`);
         return pk;
       }
     }
@@ -151,11 +209,14 @@ async function resolveUserIdViaSearch(targetUsername) {
     if (userList.length > 0) {
       const firstUser = userList[0]?.user || userList[0];
       if ((firstUser?.username || '').toLowerCase() === cleanUsername) {
-        return String(firstUser.pk || firstUser.id || '');
+        const pk = String(firstUser.pk || firstUser.id || '');
+        Logger.success(`Resolved numeric ID ${pk} for @${cleanUsername} via first topsearch match.`);
+        return pk;
       }
     }
+    Logger.warn(`PolarisSearchBoxRefetchableQuery returned ${userList.length} results, none matched @${cleanUsername}.`);
   } catch (e) {
-    console.warn('[WhoGhostedMe] PolarisSearchBoxRefetchableQuery error:', e);
+    Logger.error(`PolarisSearchBoxRefetchableQuery fetch error`, { error: e.message });
   }
 
   return null;
@@ -165,21 +226,23 @@ async function fetchProfileData(targetUsername) {
   const cleanUsername = targetUsername.toLowerCase().trim().replace(/^@/, '');
   const viewerUserId = getViewerUserId();
 
+  Logger.info(`Fetching profile details for @${cleanUsername}...`);
+
   // 1. Instant extraction from page scripts if currently on that user's page
   let resolvedId = extractUserIdFromPageScripts(cleanUsername);
   if (resolvedId) {
-    console.log('[WhoGhostedMe] Resolved ID from page scripts:', resolvedId);
+    Logger.info(`Found ID ${resolvedId} for @${cleanUsername} directly in page scripts.`);
   }
 
   // 2. Resolve target numeric ID via PolarisSearchBoxRefetchableQuery
   if (!resolvedId) {
     resolvedId = await resolveUserIdViaSearch(cleanUsername);
-    console.log('[WhoGhostedMe] Resolved ID after search:', resolvedId);
   }
 
-  // 2. Direct fallback via web_profile_info
+  // 3. Direct fallback via web_profile_info
   if (!resolvedId) {
     try {
+      Logger.query(`Fallback: requesting web_profile_info for @${cleanUsername}...`);
       const csrfToken = getCsrfToken();
       const infoRes = await fetch(
         `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(cleanUsername)}`,
@@ -194,20 +257,20 @@ async function fetchProfileData(targetUsername) {
         }
       );
       const infoData = await infoRes.json().catch(() => null);
-      console.log('[WhoGhostedMe] web_profile_info response:', infoRes.status, infoData);
       if (infoRes.ok) {
         const u = infoData?.data?.user;
         if (u?.id || u?.pk) {
           resolvedId = String(u.id || u.pk);
-          console.log('[WhoGhostedMe] Resolved ID from web_profile_info:', resolvedId);
+          Logger.success(`Resolved ID ${resolvedId} via web_profile_info.`);
         }
       }
     } catch (e) {
-      console.warn('[WhoGhostedMe] web_profile_info error:', e);
+      Logger.warn(`web_profile_info error`, { error: e.message });
     }
   }
 
   if (!resolvedId) {
+    Logger.error(`Could not resolve numeric ID for @${targetUsername}.`);
     throw new Error(`Could not find profile ID for @${targetUsername}. Make sure the username is correct.`);
   }
 
@@ -235,6 +298,7 @@ async function fetchProfileData(targetUsername) {
     __relay_internal__pv__PolarisShortDramaEnabledrelayprovider: false
   }));
 
+  Logger.query(`Fetching profile content from PolarisProfilePageContentQuery (doc_id: 28036671149327607) for ID ${resolvedId}...`);
   const res = await fetch('https://www.instagram.com/api/graphql', {
     method: 'POST',
     headers: {
@@ -250,19 +314,21 @@ async function fetchProfileData(targetUsername) {
   });
 
   if (!res.ok) {
+    Logger.error(`PolarisProfilePageContentQuery failed: HTTP ${res.status}`, { status: res.status });
     throw new Error(`Failed to load profile data from Instagram (Status: ${res.status}).`);
   }
 
   const payload = await res.json();
   const user = payload?.data?.user;
   if (!user) {
+    Logger.error(`PolarisProfilePageContentQuery payload had no user data.`);
     throw new Error(`Instagram profile @${targetUsername} could not be retrieved.`);
   }
 
   const viewerPk = payload?.data?.viewer?.user?.pk || viewerUserId;
   const isOwnProfile = Boolean(viewerPk && String(viewerPk) === String(user.pk));
 
-  return {
+  const profileData = {
     pk: String(user.pk || resolvedId),
     id: String(user.pk || resolvedId),
     username: user.username || targetUsername,
@@ -276,6 +342,16 @@ async function fetchProfileData(targetUsername) {
     friendship_status: user.friendship_status || null,
     isOwnProfile
   };
+
+  Logger.success(`Profile loaded: @${profileData.username}`, {
+    pk: profileData.pk,
+    followers: profileData.follower_count,
+    following: profileData.following_count,
+    is_private: profileData.is_private,
+    isOwnProfile: profileData.isOwnProfile
+  });
+
+  return profileData;
 }
 
 // 2. Fetch Friendship Statuses via show_many (Rich Metadata: Close Friends, Requests)
@@ -327,8 +403,8 @@ async function fetchFriendshipStatuses(userIds) {
   return {};
 }
 
-// 3. Generic Friendship Paginator with High-Speed Batching (count=50)
-async function fetchFriendshipStream(type, userId, onProgress) {
+// 3. Generic Friendship Paginator with Adaptive Pacing, Intelligent Retry & Recovery
+async function fetchFriendshipStream(type, userId, expectedTotal, isOwnProfile, onProgress) {
   const isFollowers = type === 'followers';
   const csrfToken = getCsrfToken();
   const baseHeaders = {
@@ -343,42 +419,128 @@ async function fetchFriendshipStream(type, userId, onProgress) {
   const seenIds = new Set();
   let maxId = null;
   let hasMore = true;
+  let pageIndex = 0;
+  let recoveryAttempted = false;
+
+  Logger.info(`[${type.toUpperCase()}] Starting stream for user ID ${userId}. Expected: ${expectedTotal ?? 'unknown'}.`);
 
   while (hasMore) {
-    let url = `https://www.instagram.com/api/v1/friendships/${userId}/${type}/?count=50`;
-    if (isFollowers) url += `&search_surface=follow_list_page`;
+    pageIndex++;
+    let url = `https://www.instagram.com/api/v1/friendships/${userId}/${type}/?count=12&search_surface=follow_list_page`;
     if (maxId) url += `&max_id=${encodeURIComponent(maxId)}`;
 
+    Logger.query(`[${type.toUpperCase()}] Requesting page ${pageIndex}: count=12, max_id=${maxId || 'START'}`);
+
     let data = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let batchUsers = [];
+    let addedInBatch = 0;
+    let duplicatesInBatch = 0;
+
+    // Retry loop for the current page (handles HTTP 429, network glitches, or stale duplicate responses)
+    for (let attempt = 0; attempt < 4; attempt++) {
       try {
         const res = await fetch(url, {
           method: 'GET',
           headers: baseHeaders,
           credentials: 'include'
         });
+
         if (res.ok) {
           data = await res.json();
+          batchUsers = Array.isArray(data?.users) ? data.users : [];
+
+          // Check for duplicates in the incoming batch
+          duplicatesInBatch = 0;
+          for (const u of batchUsers) {
+            const id = String(u.pk || u.id || u.pk_id || u.strong_id__ || '').trim();
+            if (id && seenIds.has(id)) duplicatesInBatch++;
+          }
+
+          // If Instagram returned heavy duplicates or incomplete items when more are expected, cool down and retry
+          const hasMoreFlag = data?.has_more !== false;
+          if (attempt < 2 && hasMoreFlag && duplicatesInBatch >= 3 && expectedTotal && users.length < expectedTotal - 15) {
+            Logger.warn(`[${type.toUpperCase()}] Page ${pageIndex}: Stale cache detected (${duplicatesInBatch} duplicates). Cooling down 1.2s before retry...`, {
+              attempt: attempt + 1,
+              duplicates: duplicatesInBatch
+            });
+            await new Promise(r => setTimeout(r, 1200 + attempt * 500));
+            continue;
+          }
+
+          Logger.success(`[${type.toUpperCase()}] Page ${pageIndex}: HTTP 200 OK (${batchUsers.length} raw users received).`);
           break;
+        } else {
+          let errText = '';
+          try { errText = await res.text(); } catch (_) {}
+
+          if (res.status === 429) {
+            const cooldown = 2500 * (attempt + 1);
+            Logger.error(`[${type.toUpperCase()}] RATE LIMITED (HTTP 429): Throttled on page ${pageIndex}! Backing off ${cooldown / 1000}s...`, {
+              status: 429,
+              attempt: attempt + 1,
+              cooldownMs: cooldown
+            });
+            await new Promise(r => setTimeout(r, cooldown));
+          } else if (res.status === 403) {
+            Logger.error(`[${type.toUpperCase()}] ACCESS FORBIDDEN (HTTP 403) on page ${pageIndex}! Pausing 1.5s...`, {
+              status: 403,
+              attempt: attempt + 1
+            });
+            await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          } else {
+            Logger.warn(`[${type.toUpperCase()}] Page ${pageIndex} returned HTTP ${res.status} ${res.statusText}`, {
+              status: res.status,
+              attempt: attempt + 1
+            });
+            await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+          }
         }
-      } catch (e) {}
-      await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+      } catch (e) {
+        Logger.error(`[${type.toUpperCase()}] Page ${pageIndex} network error (attempt ${attempt + 1})`, { error: e.message });
+        await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+      }
     }
 
-    const batchUsers = Array.isArray(data?.users) ? data.users : [];
     if (batchUsers.length === 0) {
+      // Check if we should attempt a recovery pass before giving up
+      if (expectedTotal && users.length < expectedTotal - 10 && !recoveryAttempted) {
+        recoveryAttempted = true;
+        Logger.warn(`[${type.toUpperCase()}] Premature stream stop at ${users.length} vs expected ${expectedTotal}. Cooling down 2.5s for recovery query...`);
+        await new Promise(r => setTimeout(r, 2500));
+        maxId = String(users.length);
+        continue;
+      }
+
+      Logger.warn(`[${type.toUpperCase()}] Page ${pageIndex} returned 0 users. End of pagination reached.`, {
+        maxId,
+        hasMoreFlag: data?.has_more,
+        fetchedSoFar: users.length,
+        expectedTotal
+      });
       hasMore = false;
       if (onProgress) onProgress(users.length, true);
       break;
     }
 
-    const batchIds = batchUsers.map(u => String(u.pk || u.id || u.pk_id || u.strong_id__ || '')).filter(Boolean);
-    const statuses = await fetchFriendshipStatuses(batchIds);
+    // Only query show_many for viewer's own profile
+    let statuses = {};
+    if (isOwnProfile) {
+      const batchIds = batchUsers.map(u => String(u.pk || u.id || u.pk_id || u.strong_id__ || '')).filter(Boolean);
+      statuses = await fetchFriendshipStatuses(batchIds);
+    }
+
+    addedInBatch = 0;
+    duplicatesInBatch = 0;
 
     for (const u of batchUsers) {
       const id = String(u.pk || u.id || u.pk_id || u.strong_id__ || '').trim();
-      if (!id || seenIds.has(id)) continue;
+      if (!id) continue;
+      if (seenIds.has(id)) {
+        duplicatesInBatch++;
+        continue;
+      }
       seenIds.add(id);
+      addedInBatch++;
 
       const status = statuses[id] || {};
       users.push({
@@ -399,9 +561,23 @@ async function fetchFriendshipStream(type, userId, onProgress) {
       });
     }
 
-    const nextMaxId = data?.next_max_id ? String(data.next_max_id) : null;
-    hasMore = Boolean(nextMaxId && data?.has_more !== false && nextMaxId !== maxId);
+    if (duplicatesInBatch > 0) {
+      Logger.warn(`[${type.toUpperCase()}] Page ${pageIndex}: Filtered ${duplicatesInBatch} duplicate users returned by Instagram API.`);
+    }
+
+    const hasMoreFlag = data?.has_more !== false;
+    let nextMaxId = null;
+
+    if (data?.next_max_id != null && String(data.next_max_id).trim() !== '') {
+      nextMaxId = String(data.next_max_id).trim();
+    } else if (hasMoreFlag && batchUsers.length > 0) {
+      nextMaxId = String(pageIndex * 12);
+    }
+
+    hasMore = Boolean(hasMoreFlag && nextMaxId && nextMaxId !== maxId);
     maxId = nextMaxId;
+
+    Logger.info(`[${type.toUpperCase()}] Page ${pageIndex}: Received +${batchUsers.length} raw (${addedInBatch} new, Total: ${users.length}${expectedTotal ? ' / ' + expectedTotal : ''}). Next offset: ${nextMaxId || 'NONE'}, has_more: ${hasMore}`);
 
     if (onProgress) {
       onProgress(users.length, !hasMore);
@@ -410,9 +586,46 @@ async function fetchFriendshipStream(type, userId, onProgress) {
     if (!hasMore || batchUsers.length === 0) {
       break;
     }
+
+    // Human-like pacing delay with slight randomized jitter (650ms - 900ms) to prevent server throttling
+    const pacingDelay = 650 + Math.floor(Math.random() * 250);
+    await new Promise(r => setTimeout(r, pacingDelay));
+  }
+
+  // Final discrepancy check
+  if (expectedTotal && users.length < expectedTotal) {
+    const diff = expectedTotal - users.length;
+    Logger.warn(`[${type.toUpperCase()}] Count mismatch detected: Profile reports ${expectedTotal}, but API returned ${users.length} active users (${diff} accounts unreachable). Potential causes: deactivated/suspended accounts, privacy filters, or followed hashtags.`, {
+      expectedTotal,
+      retrievedTotal: users.length,
+      difference: diff
+    });
+  } else {
+    Logger.success(`[${type.toUpperCase()}] Stream finished: Successfully retrieved all ${users.length} accounts.`);
   }
 
   return users;
+}
+
+// Check direct friendship relationship between viewer and target user
+async function checkFriendshipStatus(targetUserId) {
+  try {
+    const csrfToken = getCsrfToken();
+    const res = await fetch(`https://www.instagram.com/api/v1/friendships/show/${targetUserId}/`, {
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'X-IG-App-ID': '936619743392459',
+        'X-ASBD-ID': '359341',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      credentials: 'include'
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      return data;
+    }
+  } catch (e) {}
+  return null;
 }
 
 // 4. Action Handlers: Follow, Unfollow, Remove Follower
@@ -548,6 +761,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'get_logs') {
+    sendResponse({ success: true, logs: Logger.logs });
+    return true;
+  }
+
+  if (message.action === 'clear_logs') {
+    Logger.clear();
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (message.action === 'scanProfile') {
     (async () => {
       try {
@@ -598,38 +822,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           followersDone: false
         });
 
-        // Parallel streams for following and followers
+        // Sequential streams to prevent Instagram server-side rate limits & duplicate slices
         let curFollowingCount = 0;
         let curFollowersCount = 0;
         let isFollowingDone = false;
         let isFollowersDone = false;
 
-        const [followers, followings] = await Promise.all([
-          fetchFriendshipStream('followers', profile.pk, (fetched, done) => {
-            curFollowersCount = fetched;
-            isFollowersDone = done;
-            sendProgress({
-              followingFetched: curFollowingCount,
-              followingTotal: profile.following_count,
-              followingDone: isFollowingDone,
-              followersFetched: curFollowersCount,
-              followersTotal: profile.follower_count,
-              followersDone: isFollowersDone
-            });
-          }),
-          fetchFriendshipStream('following', profile.pk, (fetched, done) => {
-            curFollowingCount = fetched;
-            isFollowingDone = done;
-            sendProgress({
-              followingFetched: curFollowingCount,
-              followingTotal: profile.following_count,
-              followingDone: isFollowingDone,
-              followersFetched: curFollowersCount,
-              followersTotal: profile.follower_count,
-              followersDone: isFollowersDone
-            });
-          })
-        ]);
+        Logger.info(`=== STARTING SCAN FOR @${profile.username} ===`);
+        Logger.info(`Target Account Stats: Followers=${profile.follower_count}, Following=${profile.following_count}, isOwnProfile=${profile.isOwnProfile}`);
+
+        // 1. Fetch Followings first
+        Logger.info(`[Step 1/2] Fetching followings list for @${profile.username}...`);
+        const followings = await fetchFriendshipStream('following', profile.pk, profile.following_count, profile.isOwnProfile, (fetched, done) => {
+          curFollowingCount = fetched;
+          isFollowingDone = done;
+          sendProgress({
+            followingFetched: curFollowingCount,
+            followingTotal: profile.following_count,
+            followingDone: isFollowingDone,
+            followersFetched: curFollowersCount,
+            followersTotal: profile.follower_count,
+            followersDone: isFollowersDone
+          });
+        });
+
+        // Gentle pause between following and followers to let Instagram backend session settle
+        await new Promise(r => setTimeout(r, 600));
+
+        // 2. Fetch Followers second
+        Logger.info(`[Step 2/2] Fetching followers list for @${profile.username}...`);
+        const followers = await fetchFriendshipStream('followers', profile.pk, profile.follower_count, profile.isOwnProfile, (fetched, done) => {
+          curFollowersCount = fetched;
+          isFollowersDone = done;
+          sendProgress({
+            followingFetched: curFollowingCount,
+            followingTotal: profile.following_count,
+            followingDone: isFollowingDone,
+            followersFetched: curFollowersCount,
+            followersTotal: profile.follower_count,
+            followersDone: isFollowersDone
+          });
+        });
 
         sendProgress({
           followingFetched: followings.length,
@@ -641,7 +874,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           done: true
         });
 
-        // Compute Universal Relationship Sets strictly by ID after fully collecting both lists
+        // Compute Universal Relationship Sets
         const getNormalizedId = (u) => String(u.id || u.pk || u.pk_id || u.strong_id__ || '').trim();
 
         const followerIdSet = new Set(followers.map(getNormalizedId).filter(Boolean));
@@ -651,9 +884,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let fans = [];
         let mutual = [];
 
+        Logger.info(`Beginning relationship calculations: ${followers.length} followers collected, ${followings.length} following collected.`);
+
         if (profile.isOwnProfile) {
           // --- OWN PROFILE SCENARIO ---
-          // show_many statuses authoritatively declare viewer's direct relationships
           for (const u of followers) {
             const id = getNormalizedId(u);
             if (id && u.following === true) {
@@ -673,11 +907,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
           }
 
-          // 1. Not following you: in followings, but doesn't follow back
-          notFollowingBack = followings.filter(u => {
+          // Initial candidate filtering
+          let ghostCandidates = followings.filter(u => {
             const id = getNormalizedId(u);
             return id && !followerIdSet.has(id) && u.followed_by !== true;
           });
+
+          // Safeguard: Verify candidate ghosts via direct status check to ensure NO ONE who follows you back is falsely flagged
+          if (ghostCandidates.length > 0 && ghostCandidates.length <= 60) {
+            Logger.info(`Verifying ${ghostCandidates.length} unconfirmed relationships via direct status check...`);
+            const verifiedGhosts = [];
+            for (const u of ghostCandidates) {
+              const id = getNormalizedId(u);
+              const statusData = await checkFriendshipStatus(id);
+              if (statusData?.followed_by === true) {
+                Logger.success(`[VERIFIED RECOVERY] @${u.username || id} ACTUALLY follows you back! Recovered from Instagram API drop.`);
+                followerIdSet.add(id);
+                u.followed_by = true;
+                if (!followers.some(f => getNormalizedId(f) === id)) {
+                  followers.push(u);
+                }
+              } else {
+                verifiedGhosts.push(u);
+              }
+              await new Promise(r => setTimeout(r, 120));
+            }
+            notFollowingBack = verifiedGhosts;
+          } else {
+            notFollowingBack = ghostCandidates;
+          }
 
           // 2. You don't follow back: in followers, but viewer does not follow them back
           fans = followers.filter(u => {
@@ -692,25 +950,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         } else {
           // --- OTHER PERSON'S PROFILE SCENARIO ---
-          // Strictly compare THAT PERSON'S collected followings and followers lists by user ID:
+          // Dual-Key Matching: Check both User ID and normalized username to eliminate false positives
+          const followerUsernameSet = new Set(followers.map(u => (u.username || '').toLowerCase()).filter(Boolean));
+          const followingUsernameSet = new Set(followings.map(u => (u.username || '').toLowerCase()).filter(Boolean));
+
           // 1. Who doesn't follow THEM back: in their followings, but NOT in their followers
           notFollowingBack = followings.filter(u => {
             const id = getNormalizedId(u);
-            return id && !followerIdSet.has(id);
+            const un = (u.username || '').toLowerCase();
+            const followsBack = (id && followerIdSet.has(id)) || (un && followerUsernameSet.has(un));
+            return !followsBack;
           });
 
           // 2. Who THEY don't follow back: in their followers, but NOT in their followings
           fans = followers.filter(u => {
             const id = getNormalizedId(u);
-            return id && !followingIdSet.has(id);
+            const un = (u.username || '').toLowerCase();
+            const followed = (id && followingIdSet.has(id)) || (un && followingUsernameSet.has(un));
+            return !followed;
           });
 
           // 3. Mutual: in their followings AND in their followers
           mutual = followings.filter(u => {
             const id = getNormalizedId(u);
-            return id && followerIdSet.has(id);
+            const un = (u.username || '').toLowerCase();
+            return (id && followerIdSet.has(id)) || (un && followerUsernameSet.has(un));
           });
         }
+
+        Logger.success(`Scan complete for @${profile.username}! Results: ${notFollowingBack.length} don't follow back, ${fans.length} fans, ${mutual.length} mutual.`);
 
         sendResponse({
           success: true,
@@ -723,6 +991,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           followers
         });
       } catch (err) {
+        Logger.error(`Scan failed: ${err.message || err}`, { stack: err.stack });
         sendResponse({ success: false, error: err.message || 'An error occurred while scanning profile.' });
       }
     })();

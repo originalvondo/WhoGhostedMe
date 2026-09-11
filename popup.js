@@ -39,8 +39,28 @@ const summaryPill = document.getElementById("summaryPill");
 
 // Secondary Controls
 const controlsBar = document.getElementById("controlsBar");
+const userSearchInput = document.getElementById("userSearchInput");
+const clearSearchBtn = document.getElementById("clearSearchBtn");
 const filterPills = document.querySelectorAll(".pill-btn");
 const listContainer = document.getElementById("listContainer");
+
+// Logs Elements
+const logsToggleBtn = document.getElementById("logsToggleBtn");
+const logsBadgeDot = document.getElementById("logsBadgeDot");
+const logsView = document.getElementById("logsView");
+const logsCountBadge = document.getElementById("logsCountBadge");
+const copyLogsBtn = document.getElementById("copyLogsBtn");
+const copyLogsBtnText = document.getElementById("copyLogsBtnText");
+const clearLogsBtn = document.getElementById("clearLogsBtn");
+const closeLogsBtn = document.getElementById("closeLogsBtn");
+const logFilterBtns = document.querySelectorAll(".log-filter-btn");
+const logCountAll = document.getElementById("logCountAll");
+const logCountError = document.getElementById("logCountError");
+const logCountWarn = document.getElementById("logCountWarn");
+const logCountQuery = document.getElementById("logCountQuery");
+const logCountInfo = document.getElementById("logCountInfo");
+const logsAutoScrollCheck = document.getElementById("logsAutoScrollCheck");
+const logsConsole = document.getElementById("logsConsole");
 
 // Notice Card
 const noticeCard = document.getElementById("noticeCard");
@@ -52,6 +72,12 @@ const noticeBtn = document.getElementById("noticeBtn");
 let activeTabId = null;
 let currentTab = "notFollowingBack";
 let currentFilter = "all";
+let searchQuery = "";
+
+// Logs State
+let debugLogs = [];
+let currentLogFilter = "all";
+let isLogsOpen = false;
 
 let dataSets = {
   notFollowingBack: [],
@@ -66,6 +92,16 @@ let currentDetectedUsername = null;
 const SVG_FALLBACK_AVATAR = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDQiIGhlaWdodD0iNDQiIHZpZXdCb3g9IjAgMCA0NCA0NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjIiIGN5PSIyMiIgcj0iMjIiIGZpbGw9IiNlNWU3ZWIiLz4KPHBhdGggZD0iTTIyIDEzQzE3Ljg2IDEzIDE0LjUgMTYuMzYgMTQuNSAyMC41QzE0LjUgMjQuNjQgMTcuODYgMjggMjIgMjhDMjYuMTQgMjggMjkuNSAyNC42NCAyOS41IDIwLjVDMjkuNSAxNi4zNiAyNi4xNCAxMyAyMiAxMloiIGZpbGw9IiM5Y2EzYWYiLz4KPHBhdGggZD0iTTIyIDMxQzI2LjE0IDMxIDMwLjY0IDMwLjM0IDMzLjUgMjguNUMzMC42NCAyNi42NiAyNi4xNCAyNiAyMiAyNkMxNy44NiAyNiAxMy4zNiAyNi42NiAxMC41IDI4LjVDMTMuMzYgMzAuMzQgMTcuODYgMzEgMjIgMzFaIiBmaWxsPSIjOWNhM2FmIi8+Cjwvc3ZnPg==';
 
 // Helpers
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function showNotice(title, desc, buttonText, buttonAction) {
   startScreen.style.display = "none";
   progressSection.style.display = "none";
@@ -88,10 +124,166 @@ function showNotice(title, desc, buttonText, buttonAction) {
   }
 }
 
+// Debug & Network Logs Controller
+function renderLogs() {
+  if (!logsConsole) return;
+
+  // Filter list
+  let filtered = debugLogs;
+  if (currentLogFilter === "error") {
+    filtered = debugLogs.filter(l => l.level === "error");
+  } else if (currentLogFilter === "warn") {
+    filtered = debugLogs.filter(l => l.level === "warn");
+  } else if (currentLogFilter === "query") {
+    filtered = debugLogs.filter(l => l.level === "query");
+  } else if (currentLogFilter === "info") {
+    filtered = debugLogs.filter(l => l.level === "info" || l.level === "success");
+  }
+
+  // Update counts on filter buttons
+  const errCount = debugLogs.filter(l => l.level === "error").length;
+  const warnCount = debugLogs.filter(l => l.level === "warn").length;
+  const qryCount = debugLogs.filter(l => l.level === "query").length;
+  const infoCount = debugLogs.filter(l => l.level === "info" || l.level === "success").length;
+
+  if (logCountAll) logCountAll.textContent = debugLogs.length;
+  if (logCountError) logCountError.textContent = errCount;
+  if (logCountWarn) logCountWarn.textContent = warnCount;
+  if (logCountQuery) logCountQuery.textContent = qryCount;
+  if (logCountInfo) logCountInfo.textContent = infoCount;
+  if (logsCountBadge) logsCountBadge.textContent = debugLogs.length;
+
+  if (filtered.length === 0) {
+    logsConsole.innerHTML = `<div class="logs-empty">${debugLogs.length === 0 ? 'No logs recorded yet. Run a scan to view real-time network diagnostics.' : 'No logs match the "' + currentLogFilter + '" filter.'}</div>`;
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  filtered.forEach(entry => {
+    const row = document.createElement("div");
+    row.className = `log-entry log-level-${entry.level || 'info'}`;
+
+    const contentRow = document.createElement("div");
+    contentRow.className = "log-entry-row";
+
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "log-timestamp";
+    timeSpan.textContent = entry.timeStr || "";
+
+    const badgeSpan = document.createElement("span");
+    badgeSpan.className = "log-badge";
+    const lvl = (entry.level || "info").toLowerCase();
+    badgeSpan.textContent = lvl === "query" ? "QRY" : (lvl === "success" ? "OK" : (lvl === "error" ? "ERR" : (lvl === "warn" ? "WARN" : "INFO")));
+
+    const msgSpan = document.createElement("span");
+    msgSpan.className = "log-entry-msg";
+    msgSpan.textContent = entry.message || "";
+
+    contentRow.appendChild(timeSpan);
+    contentRow.appendChild(badgeSpan);
+    contentRow.appendChild(msgSpan);
+    row.appendChild(contentRow);
+
+    if (entry.details) {
+      const detailsEl = document.createElement("pre");
+      detailsEl.className = "log-details";
+      detailsEl.textContent = entry.details;
+      row.appendChild(detailsEl);
+    }
+
+    fragment.appendChild(row);
+  });
+
+  logsConsole.innerHTML = "";
+  logsConsole.appendChild(fragment);
+
+  if (logsAutoScrollCheck && logsAutoScrollCheck.checked) {
+    logsConsole.scrollTop = logsConsole.scrollHeight;
+  }
+}
+
+function appendLogEntry(entry) {
+  if (!entry) return;
+  debugLogs.push(entry);
+  if (debugLogs.length > 1000) debugLogs.shift();
+
+  if (!isLogsOpen && (entry.level === "error" || entry.level === "warn")) {
+    if (logsBadgeDot) {
+      logsBadgeDot.style.display = "block";
+      logsBadgeDot.className = entry.level === "error" ? "logs-badge-dot" : "logs-badge-dot has-warning";
+    }
+  }
+
+  renderLogs();
+}
+
+function toggleLogs(open) {
+  isLogsOpen = (typeof open === "boolean") ? open : !isLogsOpen;
+  if (logsView) logsView.style.display = isLogsOpen ? "flex" : "none";
+  if (logsToggleBtn) logsToggleBtn.classList.toggle("active", isLogsOpen);
+
+  if (isLogsOpen) {
+    if (logsBadgeDot) logsBadgeDot.style.display = "none";
+    renderLogs();
+  }
+}
+
+function copyLogs() {
+  if (debugLogs.length === 0) return;
+  const text = debugLogs.map(l => {
+    let s = `[${l.timeStr || l.timestamp}] [${(l.level || 'INFO').toUpperCase()}] ${l.message}`;
+    if (l.details) s += `\n${l.details}`;
+    return s;
+  }).join('\n');
+
+  navigator.clipboard.writeText(text).then(() => {
+    if (copyLogsBtnText) {
+      const original = copyLogsBtnText.textContent;
+      copyLogsBtnText.textContent = "Copied!";
+      setTimeout(() => {
+        copyLogsBtnText.textContent = original;
+      }, 1500);
+    }
+  }).catch(() => {});
+}
+
+function clearLogs() {
+  debugLogs = [];
+  try {
+    chrome.storage.local.set({ whg_debug_logs: [] });
+  } catch (e) {}
+
+  getActiveInstagramTab((tab) => {
+    if (tab && tab.id) {
+      chrome.tabs.sendMessage(tab.id, { action: "clear_logs" }, () => {
+        chrome.runtime.lastError;
+      });
+    }
+  });
+
+  renderLogs();
+}
+
+// Initial Load of Debug Logs
+try {
+  chrome.storage.local.get(["whg_debug_logs"], (res) => {
+    if (Array.isArray(res?.whg_debug_logs) && res.whg_debug_logs.length > 0) {
+      debugLogs = res.whg_debug_logs;
+      renderLogs();
+    }
+  });
+} catch (e) {}
+
 function updateSummaryPill() {
   if (!summaryPill || !summaryPillWrap) return;
   const count = dataSets[currentTab]?.length || 0;
   const isOwn = Boolean(targetProfile?.isOwnProfile);
+
+  if (searchQuery) {
+    const matchesCount = getActiveList().length;
+    summaryPill.innerHTML = `<span>Found <strong>${matchesCount}</strong> accounts matching "${escapeHtml(searchQuery)}"</span>`;
+    return;
+  }
 
   let text = "";
   if (currentTab === "notFollowingBack") {
@@ -134,9 +326,18 @@ function getActiveList() {
   let list = dataSets[currentTab] || [];
 
   if (currentFilter === "besties") {
-    return list.filter(u => u.is_bestie);
+    list = list.filter(u => u.is_bestie);
   } else if (currentFilter === "private") {
-    return list.filter(u => u.is_private);
+    list = list.filter(u => u.is_private);
+  }
+
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase().trim();
+    list = list.filter(u => {
+      const un = (u.username || "").toLowerCase();
+      const fn = (u.full_name || "").toLowerCase();
+      return un.includes(q) || fn.includes(q);
+    });
   }
 
   return list;
@@ -152,7 +353,7 @@ function renderList() {
     let emptyTitle = "No accounts found";
     let emptySub = "Try clearing your search query or filters.";
 
-    if (!listQuery && currentFilter === "all") {
+    if (!searchQuery && currentFilter === "all") {
       if (currentTab === "notFollowingBack") {
         emptyIcon = "🎉";
         emptyTitle = "No Ghosts Found!";
@@ -174,6 +375,10 @@ function renderList() {
         emptyTitle = "No Followers Yet";
         emptySub = "This account has no followers yet.";
       }
+    } else if (searchQuery) {
+      emptyIcon = "🔍";
+      emptyTitle = "No matching accounts";
+      emptySub = `No results found for "${escapeHtml(searchQuery)}" in this tab.`;
     }
 
     listContainer.innerHTML = `
@@ -521,6 +726,9 @@ function startScan() {
       followers: []
     };
     targetProfile = null;
+    searchQuery = "";
+    if (userSearchInput) userSearchInput.value = "";
+    if (clearSearchBtn) clearSearchBtn.style.display = "none";
 
     // Reset UI state
     startScreen.style.display = "none";
@@ -660,6 +868,15 @@ chrome.runtime.onMessage.addListener((msg) => {
     followersCountText.textContent = frTotal > 0 ? `${frFetched} / ${frTotal} (${frPct}%)` : `${frFetched} loaded`;
     followersSpinner.style.display = msg.followersDone ? "none" : "inline-block";
   }
+
+  if (msg.action === "new_log_entry" && msg.log) {
+    appendLogEntry(msg.log);
+  }
+
+  if (msg.action === "logs_cleared") {
+    debugLogs = [];
+    renderLogs();
+  }
 });
 
 // Tab Switching
@@ -693,6 +910,53 @@ if (scanBtn) {
 if (startScanBtn) {
   startScanBtn.addEventListener("click", () => {
     startScan();
+  });
+}
+
+// Logs Button & Actions Listeners
+if (logsToggleBtn) {
+  logsToggleBtn.addEventListener("click", () => toggleLogs());
+}
+if (closeLogsBtn) {
+  closeLogsBtn.addEventListener("click", () => toggleLogs(false));
+}
+if (copyLogsBtn) {
+  copyLogsBtn.addEventListener("click", copyLogs);
+}
+if (clearLogsBtn) {
+  clearLogsBtn.addEventListener("click", clearLogs);
+}
+logFilterBtns.forEach(btn => {
+  btn.addEventListener("click", () => {
+    logFilterBtns.forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentLogFilter = btn.dataset.filter || "all";
+    renderLogs();
+  });
+});
+
+// Search Box Listeners
+if (userSearchInput) {
+  userSearchInput.addEventListener("input", (e) => {
+    searchQuery = (e.target.value || "").trim();
+    if (clearSearchBtn) {
+      clearSearchBtn.style.display = searchQuery ? "flex" : "none";
+    }
+    updateSummaryPill();
+    renderList();
+  });
+}
+
+if (clearSearchBtn) {
+  clearSearchBtn.addEventListener("click", () => {
+    if (userSearchInput) {
+      userSearchInput.value = "";
+      userSearchInput.focus();
+    }
+    searchQuery = "";
+    clearSearchBtn.style.display = "none";
+    updateSummaryPill();
+    renderList();
   });
 }
 
@@ -853,3 +1117,13 @@ chrome.runtime.onMessage.addListener((msg) => {
     }
   }
 });
+
+// 5. Open external links reliably in a new tab
+document.addEventListener("click", (e) => {
+  const link = e.target.closest('a[href^="http"]');
+  if (link && link.href) {
+    e.preventDefault();
+    chrome.tabs.create({ url: link.href });
+  }
+});
+
