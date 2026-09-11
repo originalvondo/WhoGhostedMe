@@ -1,31 +1,44 @@
 {
   "manifest_version": 3,
   "name": "WhoGhostedMe",
-  "version": "1.0",
-  "description": "Ever wondered who ghosted you on Instagram? This extension finds out people who don't follow you back",
-  "permissions": ["scripting", "tabs", "activeTab", "storage", "cookies"],
+  "version": "2.0",
+  "description": "Find out who doesn't follow you back on Instagram, identify fans, and manage relationships.",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage",
+    "sidePanel",
+    "scripting"
+  ],
   "host_permissions": [
     "*://*.instagram.com/*",
+    "*://instagram.com/*",
     "*://*.cdninstagram.com/*",
-    "*://*.fbcdn.net/*"
+    "*://*.fbcdn.net/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "WhoGhostedMe"
+    "default_title": "WhoGhostedMe",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "popup.html"
   },
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["*://*.instagram.com/*"],
+      "matches": [
+        "*://*.instagram.com/*",
+        "*://instagram.com/*"
+      ],
       "js": ["content.js"]
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["worker.js", "results.html", "results.js"],
-      "matches": ["*://*.instagram.com/*"]
     }
   ],
   "content_security_policy": {

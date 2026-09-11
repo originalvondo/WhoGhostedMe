@@ -1,13 +1,19 @@
+// content.js - WhoGhostedMe V2.0 Clean-Slate Engine
+// Live Instagram GraphQL & Friendship Endpoint Manager
+
 function getCsrfToken() {
   const match = document.cookie.match(/csrftoken=([^;]+)/);
-  if (match) return match[1];
-  return null;
+  return match ? match[1] : '';
+}
+
+function getViewerUserId() {
+  const match = document.cookie.match(/ds_user_id=([^;]+)/);
+  return match ? match[1] : '';
 }
 
 function getFbDtsg() {
   const input = document.querySelector('input[name="fb_dtsg"]');
   if (input && input.value) return input.value;
-
   try {
     const scripts = document.querySelectorAll('script');
     for (const s of scripts) {
@@ -19,1161 +25,760 @@ function getFbDtsg() {
                     text.match(/"dtsg":\{"token":"([^"]+)"\}/);
       if (match) return match[1];
     }
-
-    const htmlMatch = document.documentElement.innerHTML.match(/"DTSGInitialData"[^}]*"token":"([^"]+)"/) ||
-                      document.documentElement.innerHTML.match(/"token":"(NA[a-zA-Z0-9_:-]+)"/);
-    if (htmlMatch) return htmlMatch[1];
-  } catch (e) {
-    console.warn("fb_dtsg extraction error:", e);
-  }
-
-  return 'NAfywlYPQ_nTNwGTIwXcJUTPrmFMpOZf3n19xp-4cwwI5n8-NsGQnmA:17853828322093762:1787994042';
+  } catch (e) {}
+  return '';
 }
 
-function getJazoest(dtsg) {
+function getJazoest(fbDtsg) {
   const input = document.querySelector('input[name="jazoest"]');
   if (input && input.value) return input.value;
-
-  try {
-    const scripts = document.querySelectorAll('script');
-    for (const s of scripts) {
-      const text = s.textContent;
-      if (!text) continue;
-      const match = text.match(/"jazoest":(\d+)/) || text.match(/"jazoest":"(\d+)"/);
-      if (match) return match[1];
-    }
-  } catch (e) {}
-
-  if (dtsg) {
+  if (fbDtsg) {
     let sum = 0;
-    for (let i = 0; i < dtsg.length; i++) {
-      sum += dtsg.charCodeAt(i);
+    for (let i = 0; i < fbDtsg.length; i++) {
+      sum += fbDtsg.charCodeAt(i);
     }
-    return "2" + sum;
+    return '2' + sum;
   }
-  return "22714";
+  return '22714';
 }
 
-function getLsdToken() {
+function getLsd() {
   const input = document.querySelector('input[name="lsd"]');
   if (input && input.value) return input.value;
-
   try {
     const scripts = document.querySelectorAll('script');
     for (const s of scripts) {
       const text = s.textContent;
       if (!text) continue;
-      const match = text.match(/"LSD",\[\],\{"token":"([^"]+)"\}/) ||
-                    text.match(/"LSDInitialData",\[\],\{"token":"([^"]+)"\}/) ||
-                    text.match(/name="lsd"[^>]*value="([^"]+)"/);
+      const match = text.match(/"LSD"[^}]*"token":"([^"]+)"/) ||
+                    text.match(/"lsd":"([^"]+)"/);
       if (match) return match[1];
     }
   } catch (e) {}
+  return '';
+}
+
+// Extract user numeric PK from page scripts if currently on that user's profile
+function extractUserIdFromPageScripts(username) {
+  try {
+    const clean = username.toLowerCase().trim().replace(/^@/, '');
+    const scripts = document.querySelectorAll('script');
+    for (const s of scripts) {
+      const text = s.textContent;
+      if (!text || !text.toLowerCase().includes(clean)) continue;
+
+      // Pattern: "username":"<clean>",..."pk":"<id>" or "id":"<id>"
+      const match1 = text.match(new RegExp(`"username"\\s*:\\s*"${clean}"[\\s\\S]{1,400}?"(?:pk|id)"\\s*:\\s*"(\\d{5,})"`, 'i'));
+      if (match1 && match1[1]) return match1[1];
+
+      // Pattern: "(?:pk|id)":"<id>",..."username":"<clean>"
+      const match2 = text.match(new RegExp(`"(?:pk|id)"\\s*:\\s*"(\\d{5,})"[\\s\\S]{1,400}?"username"\\s*:\\s*"${clean}"`, 'i'));
+      if (match2 && match2[1]) return match2[1];
+    }
+  } catch (e) {}
+  return null;
+}
+
+// 1. Resolve Profile & Exact Counts via PolarisSearchBoxRefetchableQuery & PolarisProfilePageContentQuery
+async function resolveUserIdViaSearch(targetUsername) {
+  const cleanUsername = targetUsername.toLowerCase().trim().replace(/^@/, '');
+  const csrfToken = getCsrfToken();
+  const fbDtsg = getFbDtsg();
+  const jazoest = getJazoest(fbDtsg);
+  const lsd = getLsd();
+  const viewerUserId = getViewerUserId();
+
+  const searchSessionId = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+    ? crypto.randomUUID() 
+    : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const rankToken = `${Date.now()}|${Math.random().toString(36).substring(2, 15)}`;
+
+  const variables = {
+    data: {
+      context: 'blended',
+      include_reel: 'true',
+      query: cleanUsername,
+      rank_token: rankToken,
+      search_session_id: searchSessionId,
+      search_surface: 'web_top_search'
+    },
+    hasQuery: true
+  };
+
+  const body = new URLSearchParams();
+  if (viewerUserId) body.append('av', viewerUserId);
+  body.append('__d', 'www');
+  body.append('__user', '0');
+  body.append('__a', '1');
+  body.append('__req', 'y');
+  if (fbDtsg) body.append('fb_dtsg', fbDtsg);
+  if (jazoest) body.append('jazoest', jazoest);
+  if (lsd) body.append('lsd', lsd);
+  body.append('fb_api_caller_class', 'RelayModern');
+  body.append('fb_api_req_friendly_name', 'PolarisSearchBoxRefetchableQuery');
+  body.append('server_timestamps', 'true');
+  body.append('variables', JSON.stringify(variables));
+  body.append('doc_id', '27706427925724183');
+
+  try {
+    const res = await fetch('https://www.instagram.com/api/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': csrfToken,
+        'X-IG-App-ID': '936619743392459',
+        'X-ASBD-ID': '359341',
+        'X-FB-Friendly-Name': 'PolarisSearchBoxRefetchableQuery',
+        ...(lsd ? { 'X-FB-LSD': lsd } : {})
+      },
+      body: body.toString(),
+      credentials: 'include'
+    });
+
+    const data = await res.json().catch(() => null);
+    console.log('[WhoGhostedMe] PolarisSearchBoxRefetchableQuery response:', res.status, data);
+
+    const userList = data?.data?.xdt_api__v1__fbsearch__topsearch_connection?.users || [];
+    for (const item of userList) {
+      const u = item?.user || item;
+      if ((u?.username || '').toLowerCase() === cleanUsername) {
+        const pk = String(u.pk || u.id || u.pk_id || '');
+        console.log('[WhoGhostedMe] Matched user PK from search:', pk);
+        return pk;
+      }
+    }
+
+    if (userList.length > 0) {
+      const firstUser = userList[0]?.user || userList[0];
+      if ((firstUser?.username || '').toLowerCase() === cleanUsername) {
+        return String(firstUser.pk || firstUser.id || '');
+      }
+    }
+  } catch (e) {
+    console.warn('[WhoGhostedMe] PolarisSearchBoxRefetchableQuery error:', e);
+  }
 
   return null;
 }
 
-async function unfollowUser(userId, username) {
-  const cleanUsername = username ? username.replace(/^@/, '') : '';
+async function fetchProfileData(targetUsername) {
+  const cleanUsername = targetUsername.toLowerCase().trim().replace(/^@/, '');
+  const viewerUserId = getViewerUserId();
 
-  if (!userId && cleanUsername) {
+  // 1. Instant extraction from page scripts if currently on that user's page
+  let resolvedId = extractUserIdFromPageScripts(cleanUsername);
+  if (resolvedId) {
+    console.log('[WhoGhostedMe] Resolved ID from page scripts:', resolvedId);
+  }
+
+  // 2. Resolve target numeric ID via PolarisSearchBoxRefetchableQuery
+  if (!resolvedId) {
+    resolvedId = await resolveUserIdViaSearch(cleanUsername);
+    console.log('[WhoGhostedMe] Resolved ID after search:', resolvedId);
+  }
+
+  // 2. Direct fallback via web_profile_info
+  if (!resolvedId) {
     try {
-      const userQueryRes = await fetch(
-        `https://www.instagram.com/web/search/topsearch/?query=${cleanUsername}`
+      const csrfToken = getCsrfToken();
+      const infoRes = await fetch(
+        `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(cleanUsername)}`,
+        {
+          headers: {
+            'X-CSRFToken': csrfToken,
+            'X-IG-App-ID': '936619743392459',
+            'X-ASBD-ID': '359341',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          credentials: 'include'
+        }
       );
-      const userQueryJson = await userQueryRes.json();
-      const user = userQueryJson.users?.find(u => u.user.username === cleanUsername);
-      userId = user?.user?.pk || user?.user?.pk_id || user?.user?.id || null;
+      const infoData = await infoRes.json().catch(() => null);
+      console.log('[WhoGhostedMe] web_profile_info response:', infoRes.status, infoData);
+      if (infoRes.ok) {
+        const u = infoData?.data?.user;
+        if (u?.id || u?.pk) {
+          resolvedId = String(u.id || u.pk);
+          console.log('[WhoGhostedMe] Resolved ID from web_profile_info:', resolvedId);
+        }
+      }
     } catch (e) {
-      console.warn("User ID lookup failed:", e);
+      console.warn('[WhoGhostedMe] web_profile_info error:', e);
     }
   }
 
-  if (!userId) {
-    return { success: false, error: `User ID not found for ${cleanUsername || 'unknown user'}` };
+  if (!resolvedId) {
+    throw new Error(`Could not find profile ID for @${targetUsername}. Make sure the username is correct.`);
+  }
+
+  // Query Polaris GraphQL with target ID
+  const csrfToken = getCsrfToken();
+  const fbDtsg = getFbDtsg();
+  const jazoest = getJazoest(fbDtsg);
+  const lsd = getLsd();
+
+  const body = new URLSearchParams();
+  body.append('fb_api_req_friendly_name', 'PolarisProfilePageContentQuery');
+  body.append('fb_api_caller_class', 'RelayModern');
+  body.append('doc_id', '28036671149327607');
+  body.append('server_timestamps', 'true');
+  if (fbDtsg) body.append('fb_dtsg', fbDtsg);
+  if (jazoest) body.append('jazoest', jazoest);
+  if (lsd) body.append('lsd', lsd);
+  body.append('variables', JSON.stringify({
+    enable_integrity_filters: true,
+    id: String(resolvedId),
+    __relay_internal__pv__PolarisCannesGuardianExperienceEnabledrelayprovider: true,
+    __relay_internal__pv__PolarisCASB976ProfileEnabledrelayprovider: false,
+    __relay_internal__pv__PolarisWebSchoolsEnabledrelayprovider: false,
+    __relay_internal__pv__PolarisRepostsConsumptionEnabledrelayprovider: true,
+    __relay_internal__pv__PolarisShortDramaEnabledrelayprovider: false
+  }));
+
+  const res = await fetch('https://www.instagram.com/api/graphql', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-CSRFToken': csrfToken,
+      'X-IG-App-ID': '936619743392459',
+      'X-ASBD-ID': '359341',
+      'X-FB-Friendly-Name': 'PolarisProfilePageContentQuery',
+      ...(lsd ? { 'X-FB-LSD': lsd } : {})
+    },
+    body: body.toString(),
+    credentials: 'include'
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to load profile data from Instagram (Status: ${res.status}).`);
+  }
+
+  const payload = await res.json();
+  const user = payload?.data?.user;
+  if (!user) {
+    throw new Error(`Instagram profile @${targetUsername} could not be retrieved.`);
+  }
+
+  const viewerPk = payload?.data?.viewer?.user?.pk || viewerUserId;
+  const isOwnProfile = Boolean(viewerPk && String(viewerPk) === String(user.pk));
+
+  return {
+    pk: String(user.pk || resolvedId),
+    id: String(user.pk || resolvedId),
+    username: user.username || targetUsername,
+    full_name: user.full_name || '',
+    biography: user.biography || '',
+    profile_pic_url: user.profile_pic_url || '',
+    follower_count: typeof user.follower_count === 'number' ? user.follower_count : 0,
+    following_count: typeof user.following_count === 'number' ? user.following_count : 0,
+    is_private: Boolean(user.is_private),
+    is_verified: Boolean(user.is_verified),
+    friendship_status: user.friendship_status || null,
+    isOwnProfile
+  };
+}
+
+// 2. Fetch Friendship Statuses via show_many (Rich Metadata: Close Friends, Requests)
+async function fetchFriendshipStatuses(userIds) {
+  if (!userIds || userIds.length === 0) return {};
+  if (userIds.length > 25) {
+    const results = {};
+    for (let i = 0; i < userIds.length; i += 25) {
+      const chunk = userIds.slice(i, i + 25);
+      const chunkRes = await fetchFriendshipStatuses(chunk);
+      Object.assign(results, chunkRes);
+    }
+    return results;
   }
 
   const csrfToken = getCsrfToken();
-  if (!csrfToken) {
-    return { success: false, error: "CSRF token not found. Please make sure you are logged into Instagram." };
-  }
-
-  const lsdToken = getLsdToken() || 'AFYm2JnB7qQGQDkc31RS06';
-  const fbDtsg = getFbDtsg() || 'NAfyXAfpsZrgWPmXbEvRjCVtV8R61iaYQ79nGfKMs0I4a92PSBEB4jg:17853828322093762:1787994042';
+  const fbDtsg = getFbDtsg();
   const jazoest = getJazoest(fbDtsg);
 
+  const postBody = new URLSearchParams();
+  postBody.append('user_ids', userIds.join(','));
+  if (jazoest) postBody.append('jazoest', jazoest);
+  if (fbDtsg) postBody.append('fb_dtsg', fbDtsg);
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('https://www.instagram.com/api/v1/friendships/show_many/', {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-IG-App-ID': '936619743392459',
+          'X-ASBD-ID': '359341',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: postBody.toString(),
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.friendship_statuses) {
+          return data.friendship_statuses;
+        }
+      }
+    } catch (err) {}
+    await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+  }
+  return {};
+}
+
+// 3. Generic Friendship Paginator with High-Speed Batching (count=50)
+async function fetchFriendshipStream(type, userId, onProgress) {
+  const isFollowers = type === 'followers';
+  const csrfToken = getCsrfToken();
   const baseHeaders = {
     'X-CSRFToken': csrfToken,
     'X-IG-App-ID': '936619743392459',
     'X-ASBD-ID': '359341',
-    'X-FB-LSD': lsdToken,
     'X-Requested-With': 'XMLHttpRequest',
-    'X-Instagram-AJAX': '1046617997',
-    'Content-Type': 'application/x-www-form-urlencoded'
+    'Accept': '*/*'
   };
 
-  const checkUnfollowSuccess = (data) => {
-    return Boolean(
-      data?.status === 'ok' ||
-      data?.friendship_status?.following === false ||
-      data?.friendship_status?.outgoing_request === false ||
-      data?.data?.xdt_destroy_friendship?.friendship_status?.following === false ||
-      data?.data?.xdt_destroy_friendship?.friendship_status?.outgoing_request === false ||
-      data?.data?.xdt_destroy_friendship?.id
-    );
-  };
+  const users = [];
+  const seenIds = new Set();
+  let maxId = null;
+  let hasMore = true;
 
-  let lastError = null;
+  while (hasMore) {
+    let url = `https://www.instagram.com/api/v1/friendships/${userId}/${type}/?count=50`;
+    if (isFollowers) url += `&search_surface=follow_list_page`;
+    if (maxId) url += `&max_id=${encodeURIComponent(maxId)}`;
 
-  // Strategy 1: Standard REST API endpoint with full tokens
-  try {
-    const postBody = new URLSearchParams();
-    postBody.append('user_id', String(userId));
-    if (fbDtsg) {
-      postBody.append('fb_dtsg', fbDtsg);
-      postBody.append('jazoest', jazoest);
-    }
-    if (lsdToken) {
-      postBody.append('lsd', lsdToken);
-    }
-
-    const res = await fetch(`https://www.instagram.com/api/v1/friendships/destroy/${userId}/`, {
-      method: 'POST',
-      headers: baseHeaders,
-      body: postBody.toString(),
-      credentials: 'include'
-    });
-
-    const data = await res.json().catch(() => null);
-    if (res.ok && checkUnfollowSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, data };
+    let data = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: baseHeaders,
+          credentials: 'include'
+        });
+        if (res.ok) {
+          data = await res.json();
+          break;
+        }
+      } catch (e) {}
+      await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
     }
 
-    if (res.status === 429 || data?.message === 'feedback_required' || data?.feedback_title) {
-      return {
-        success: false,
-        error: data?.feedback_message || data?.message || "Instagram action limit reached. Please wait a few minutes.",
-        isRateLimit: true
-      };
+    const batchUsers = Array.isArray(data?.users) ? data.users : [];
+    if (batchUsers.length === 0) {
+      hasMore = false;
+      if (onProgress) onProgress(users.length, true);
+      break;
     }
-    if (data?.message) {
-      lastError = data.message;
+
+    const batchIds = batchUsers.map(u => String(u.pk || u.id || u.pk_id || u.strong_id__ || '')).filter(Boolean);
+    const statuses = await fetchFriendshipStatuses(batchIds);
+
+    for (const u of batchUsers) {
+      const id = String(u.pk || u.id || u.pk_id || u.strong_id__ || '').trim();
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
+
+      const status = statuses[id] || {};
+      users.push({
+        id,
+        pk: id,
+        username: u.username || '',
+        full_name: u.full_name || '',
+        profile_pic_url: u.profile_pic_url || '',
+        is_private: status.is_private !== undefined ? Boolean(status.is_private) : Boolean(u.is_private),
+        is_verified: Boolean(u.is_verified),
+        is_bestie: Boolean(status.is_bestie),
+        following: status.following !== undefined ? Boolean(status.following) : (type === 'following'),
+        followed_by: status.followed_by !== undefined ? Boolean(status.followed_by) : (type === 'followers'),
+        incoming_request: Boolean(status.incoming_request),
+        outgoing_request: Boolean(status.outgoing_request),
+        is_feed_favorite: Boolean(status.is_feed_favorite),
+        is_restricted: Boolean(status.is_restricted)
+      });
     }
-  } catch (err) {
-    console.warn("REST unfollow attempt 1 failed:", err);
-    lastError = err.message;
+
+    const nextMaxId = data?.next_max_id ? String(data.next_max_id) : null;
+    hasMore = Boolean(nextMaxId && data?.has_more !== false && nextMaxId !== maxId);
+    maxId = nextMaxId;
+
+    if (onProgress) {
+      onProgress(users.length, !hasMore);
+    }
+
+    if (!hasMore || batchUsers.length === 0) {
+      break;
+    }
   }
 
-  // Strategy 2: GraphQL usePolarisUnfollowMutation with credentials and tokens
-  try {
-    const formBody = new URLSearchParams();
-    formBody.append('fb_api_req_friendly_name', 'usePolarisUnfollowMutation');
-    formBody.append('fb_api_caller_class', 'RelayModern');
-    formBody.append('doc_id', '27789106940691111');
-    formBody.append('variables', JSON.stringify({
-      target_user_id: String(userId),
-      container_module: 'profile',
-      nav_chain: 'PolarisProfilePostsTabRoot:profilePage:1:via_cold_start,PolarisProfilePostsTabRoot:profilePage:2:unexpected'
-    }));
-    if (fbDtsg) {
-      formBody.append('fb_dtsg', fbDtsg);
-      formBody.append('jazoest', jazoest);
-    }
-    if (lsdToken) {
-      formBody.append('lsd', lsdToken);
-    }
+  return users;
+}
 
-    const res = await fetch('https://www.instagram.com/api/graphql', {
+// 4. Action Handlers: Follow, Unfollow, Remove Follower
+async function followUser(userId) {
+  const csrfToken = getCsrfToken();
+  const fbDtsg = getFbDtsg();
+  const jazoest = getJazoest(fbDtsg);
+
+  const postBody = new URLSearchParams();
+  postBody.append('user_id', String(userId));
+  postBody.append('container_module', 'profile');
+  if (jazoest) postBody.append('jazoest', jazoest);
+  if (fbDtsg) postBody.append('fb_dtsg', fbDtsg);
+
+  try {
+    const res = await fetch(`https://www.instagram.com/api/v1/friendships/create/${userId}/`, {
       method: 'POST',
       headers: {
-        ...baseHeaders,
-        'X-FB-Friendly-Name': 'usePolarisUnfollowMutation'
+        'X-CSRFToken': csrfToken,
+        'X-IG-App-ID': '936619743392459',
+        'X-ASBD-ID': '359341',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: formBody.toString(),
+      body: postBody.toString(),
       credentials: 'include'
     });
-
     const data = await res.json().catch(() => null);
-    if (res.ok && checkUnfollowSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, data };
-    }
-
-    if (res.status === 429 || data?.message === 'feedback_required') {
-      return {
-        success: false,
-        error: data?.feedback_message || "Instagram action limit reached. Please wait a few minutes.",
-        isRateLimit: true
-      };
-    }
-    if (data?.message) {
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("GraphQL unfollow attempt failed:", err);
+    const following = Boolean(data?.friendship_status?.following);
+    const isRequested = Boolean(data?.friendship_status?.outgoing_request);
+    return {
+      success: Boolean(res.ok && (data?.status === 'ok' || following || isRequested)),
+      following,
+      isRequested
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
+}
 
-  // Strategy 3: Standard REST API endpoint (no body fallback)
+async function unfollowUser(userId) {
+  const csrfToken = getCsrfToken();
+  const fbDtsg = getFbDtsg();
+  const jazoest = getJazoest(fbDtsg);
+
+  const postBody = new URLSearchParams();
+  postBody.append('user_id', String(userId));
+  if (jazoest) postBody.append('jazoest', jazoest);
+  if (fbDtsg) postBody.append('fb_dtsg', fbDtsg);
+
   try {
     const res = await fetch(`https://www.instagram.com/api/v1/friendships/destroy/${userId}/`, {
       method: 'POST',
-      headers: baseHeaders,
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'X-IG-App-ID': '936619743392459',
+        'X-ASBD-ID': '359341',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: postBody.toString(),
       credentials: 'include'
     });
-
     const data = await res.json().catch(() => null);
-    if (res.ok && checkUnfollowSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, data };
-    }
-
-    if (res.status === 429 || data?.message === 'feedback_required' || data?.feedback_title) {
-      return {
-        success: false,
-        error: data?.feedback_message || data?.message || "Instagram action limit reached. Please wait a few minutes.",
-        isRateLimit: true
-      };
-    }
-    if (data?.message) {
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("REST unfollow (no body) failed:", err);
+    return {
+      success: Boolean(res.ok && (data?.status === 'ok' || data?.friendship_status?.following === false)),
+      following: false,
+      isRequested: false
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
-
-  // Strategy 4: Web endpoint fallback
-  try {
-    const res = await fetch(`https://www.instagram.com/web/friendships/${userId}/unfollow/`, {
-      method: 'POST',
-      headers: baseHeaders,
-      credentials: 'include'
-    });
-
-    const data = await res.json().catch(() => null);
-    if (res.ok && checkUnfollowSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, data };
-    }
-    if (data?.message) {
-      if (data.message === 'feedback_required') {
-        return { success: false, error: "Instagram action limit reached. Please wait a few minutes.", isRateLimit: true };
-      }
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("Web unfollow fallback failed:", err);
-  }
-
-  return { success: false, error: lastError || "Failed to unfollow user. Please wait a few minutes or check your connection." };
 }
 
-async function followUser(userId, username) {
-  const cleanUsername = username ? username.replace(/^@/, '') : '';
-
-  if (!userId && cleanUsername) {
-    try {
-      const userQueryRes = await fetch(
-        `https://www.instagram.com/web/search/topsearch/?query=${cleanUsername}`
-      );
-      const userQueryJson = await userQueryRes.json();
-      const user = userQueryJson.users?.find(u => u.user.username === cleanUsername);
-      userId = user?.user?.pk || user?.user?.pk_id || user?.user?.id || null;
-    } catch (e) {
-      console.warn("User ID lookup failed:", e);
-    }
-  }
-
-  if (!userId) {
-    return { success: false, error: `User ID not found for ${cleanUsername || 'unknown user'}` };
-  }
-
+async function removeFollower(userId) {
   const csrfToken = getCsrfToken();
-  if (!csrfToken) {
-    return { success: false, error: "CSRF token not found. Please make sure you are logged into Instagram." };
-  }
+  const fbDtsg = getFbDtsg();
+  const jazoest = getJazoest(fbDtsg);
 
-  const baseHeaders = {
-    'X-CSRFToken': csrfToken,
-    'X-IG-App-ID': '936619743392459',
-    'X-ASBD-ID': '359341',
-    'X-Requested-With': 'XMLHttpRequest',
-    'X-Instagram-AJAX': '1046617997',
-    'Content-Type': 'application/x-www-form-urlencoded'
-  };
+  const postBody = new URLSearchParams();
+  postBody.append('user_id', String(userId));
+  if (jazoest) postBody.append('jazoest', jazoest);
+  if (fbDtsg) postBody.append('fb_dtsg', fbDtsg);
 
-  const checkSuccess = (data) => {
-    return Boolean(
-      data?.status === 'ok' ||
-      data?.friendship_status?.following === true ||
-      data?.friendship_status?.outgoing_request === true
-    );
-  };
-
-  const isOutgoing = (data) => {
-    return Boolean(data?.friendship_status?.outgoing_request);
-  };
-
-  let lastError = null;
-
-  // Strategy 1: Native REST API /api/v1/friendships/create/${userId}/ with exact Instagram web payload
   try {
-    const postBody = new URLSearchParams();
-    postBody.append('container_module', 'profile');
-    postBody.append('include_follow_friction_check', 'true');
-    postBody.append('nav_chain', 'PolarisProfilePostsTabRoot:profilePage:2:topnav-link');
-    postBody.append('user_id', String(userId));
-
-    const fbDtsg = getFbDtsg() || 'NAfyXAfpsZrgWPmXbEvRjCVtV8R61iaYQ79nGfKMs0I4a92PSBEB4jg:17853828322093762:1787994042';
-    postBody.append('fb_dtsg', fbDtsg);
-    postBody.append('jazoest', getJazoest(fbDtsg));
-
-    const res = await fetch(`https://www.instagram.com/api/v1/friendships/create/${userId}/`, {
+    const res = await fetch(`https://www.instagram.com/api/v1/friendships/remove_follower/${userId}/`, {
       method: 'POST',
-      headers: baseHeaders,
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'X-IG-App-ID': '936619743392459',
+        'X-ASBD-ID': '359341',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
       body: postBody.toString(),
       credentials: 'include'
     });
-
     const data = await res.json().catch(() => null);
-    if (res.ok && checkSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, isRequested: isOutgoing(data), data };
-    }
-    if (res.status === 429 || data?.message === 'feedback_required' || data?.feedback_title) {
-      return {
-        success: false,
-        error: data?.feedback_message || data?.message || "Instagram action limit reached. Please wait a few minutes.",
-        isRateLimit: true
-      };
-    }
-    if (data?.message) {
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("Exact payload follow failed:", err);
-    lastError = err.message;
+    return {
+      success: Boolean(res.ok && data?.status === 'ok')
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
-
-  // Strategy 2: Native REST API /api/v1/friendships/create/${userId}/ with simple user_id body
-  try {
-    const postBody = new URLSearchParams();
-    postBody.append('user_id', String(userId));
-
-    const res = await fetch(`https://www.instagram.com/api/v1/friendships/create/${userId}/`, {
-      method: 'POST',
-      headers: baseHeaders,
-      body: postBody.toString(),
-      credentials: 'include'
-    });
-
-    const data = await res.json().catch(() => null);
-    if (res.ok && checkSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, isRequested: isOutgoing(data), data };
-    }
-    if (res.status === 429 || data?.message === 'feedback_required' || data?.feedback_title) {
-      return {
-        success: false,
-        error: data?.feedback_message || data?.message || "Instagram action limit reached. Please wait a few minutes.",
-        isRateLimit: true
-      };
-    }
-    if (data?.message) {
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("Simple user_id follow failed:", err);
-    lastError = err.message;
-  }
-
-  // Strategy 3: Web endpoint /web/friendships/${userId}/follow/
-  try {
-    const res = await fetch(`https://www.instagram.com/web/friendships/${userId}/follow/`, {
-      method: 'POST',
-      headers: baseHeaders,
-      credentials: 'include'
-    });
-
-    const data = await res.json().catch(() => null);
-    if (res.ok && checkSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, isRequested: isOutgoing(data), data };
-    }
-    if (data?.message) {
-      if (data.message === 'feedback_required') {
-        return { success: false, error: "Instagram action limit reached. Please wait a few minutes.", isRateLimit: true };
-      }
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("Web follow failed:", err);
-    lastError = err.message;
-  }
-
-  return { success: false, error: lastError || "Failed to follow user. Please check your connection or wait a moment." };
 }
 
-async function removeFollower(userId, username) {
-  const cleanUsername = username ? username.replace(/^@/, '') : '';
-
-  if (!userId && cleanUsername) {
-    try {
-      const userQueryRes = await fetch(
-        `https://www.instagram.com/web/search/topsearch/?query=${cleanUsername}`
-      );
-      const userQueryJson = await userQueryRes.json();
-      const user = userQueryJson.users?.find(u => u.user.username === cleanUsername);
-      userId = user?.user?.pk || user?.user?.pk_id || user?.user?.id || null;
-    } catch (e) {
-      console.warn("User ID lookup failed:", e);
-    }
-  }
-
-  if (!userId) {
-    return { success: false, error: `User ID not found for ${cleanUsername || 'unknown user'}` };
-  }
-
-  const csrfToken = getCsrfToken();
-  if (!csrfToken) {
-    return { success: false, error: "CSRF token not found. Please make sure you are logged into Instagram." };
-  }
-
-  const baseHeaders = {
-    'X-CSRFToken': csrfToken,
-    'X-IG-App-ID': '936619743392459',
-    'X-ASBD-ID': '359341',
-    'X-Requested-With': 'XMLHttpRequest',
-    'X-Instagram-AJAX': '1046617997',
-    'Content-Type': 'application/x-www-form-urlencoded'
-  };
-
-  const checkRemoveSuccess = (data) => {
-    return Boolean(
-      data?.status === 'ok' ||
-      data?.friendship_status?.followed_by === false
-    );
-  };
-
-  let lastError = null;
-
-  // Strategy 1: REST API /api/v1/friendships/remove_follower/${userId}/ with user_id, fb_dtsg, and jazoest
-  try {
-    const postBody = new URLSearchParams();
-    postBody.append('user_id', String(userId));
-    const fbDtsg = getFbDtsg() || 'NAfyXAfpsZrgWPmXbEvRjCVtV8R61iaYQ79nGfKMs0I4a92PSBEB4jg:17853828322093762:1787994042';
-    postBody.append('fb_dtsg', fbDtsg);
-    postBody.append('jazoest', getJazoest(fbDtsg));
-
-    const res = await fetch(`https://www.instagram.com/api/v1/friendships/remove_follower/${userId}/`, {
-      method: 'POST',
-      headers: baseHeaders,
-      body: postBody.toString(),
-      credentials: 'include'
-    });
-
-    const data = await res.json().catch(() => null);
-    if (res.ok && checkRemoveSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, data };
-    }
-    if (res.status === 429 || data?.message === 'feedback_required' || data?.feedback_title) {
-      return {
-        success: false,
-        error: data?.feedback_message || data?.message || "Instagram action limit reached. Please wait a few minutes.",
-        isRateLimit: true
-      };
-    }
-    if (data?.message) {
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("Remove follower attempt 1 failed:", err);
-    lastError = err.message;
-  }
-
-  // Strategy 2: Simple user_id body
-  try {
-    const postBody = new URLSearchParams();
-    postBody.append('user_id', String(userId));
-
-    const res = await fetch(`https://www.instagram.com/api/v1/friendships/remove_follower/${userId}/`, {
-      method: 'POST',
-      headers: baseHeaders,
-      body: postBody.toString(),
-      credentials: 'include'
-    });
-
-    const data = await res.json().catch(() => null);
-    if (res.ok && checkRemoveSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, data };
-    }
-    if (data?.message) {
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("Remove follower attempt 2 failed:", err);
-    lastError = err.message;
-  }
-
-  // Strategy 3: No body
-  try {
-    const res = await fetch(`https://www.instagram.com/api/v1/friendships/remove_follower/${userId}/`, {
-      method: 'POST',
-      headers: baseHeaders,
-      credentials: 'include'
-    });
-
-    const data = await res.json().catch(() => null);
-    if (res.ok && checkRemoveSuccess(data)) {
-      return { success: true, userId, username: cleanUsername, data };
-    }
-    if (data?.message) {
-      lastError = data.message;
-    }
-  } catch (err) {
-    console.warn("Remove follower attempt 3 failed:", err);
-    lastError = err.message;
-  }
-
-  return { success: false, error: lastError || "Failed to remove follower. Please check your connection or wait a moment." };
-}
-
+// 5. Message Dispatcher for Extension Side Panel
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "followUser") {
-    (async () => {
-      try {
-        const result = await followUser(message.userId, message.username);
-        sendResponse(result);
-      } catch (err) {
-        sendResponse({ success: false, error: err.message });
-      }
-    })();
+  if (message.action === 'detectProfile') {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const path = parts[0] || '';
+    const reserved = new Set(['explore', 'reels', 'stories', 'direct', 'p', 'reel', 'accounts', 'developer', 'about', 'legal', 'home', 'api', 'graphql']);
+    if (path && !reserved.has(path.toLowerCase())) {
+      sendResponse({ detectedUsername: path });
+    } else {
+      sendResponse({ detectedUsername: null });
+    }
     return true;
   }
 
-  if (message.type === "removeFollower") {
-    (async () => {
-      try {
-        const result = await removeFollower(message.userId, message.username);
-        sendResponse(result);
-      } catch (err) {
-        sendResponse({ success: false, error: err.message });
-      }
-    })();
+  if (message.action === 'followUser') {
+    followUser(message.userId).then(sendResponse);
     return true;
   }
 
-  if (message.type === "unfollowUser" || message.type === "cancelFollowRequest") {
-    (async () => {
-      try {
-        const result = await unfollowUser(message.userId, message.username);
-        sendResponse(result);
-      } catch (err) {
-        sendResponse({ success: false, error: err.message });
-      }
-    })();
+  if (message.action === 'unfollowUser') {
+    unfollowUser(message.userId).then(sendResponse);
     return true;
   }
 
-  if (message.type === "fetchImageBlob") {
-    (async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch(message.url, {
-          signal: controller.signal,
-          referrerPolicy: 'no-referrer',
-          credentials: 'omit'
-        }).catch(() => null);
-        clearTimeout(timeoutId);
-
-        if (!res || !res.ok) {
-          sendResponse({ success: false });
-          return;
-        }
-
-        const blob = await res.blob().catch(() => null);
-        if (!blob || blob.size === 0) {
-          sendResponse({ success: false });
-          return;
-        }
-
-        const reader = new FileReader();
-        reader.onloadend = () => sendResponse({ success: true, dataUrl: reader.result });
-        reader.onerror = () => sendResponse({ success: false });
-        reader.readAsDataURL(blob);
-      } catch (err) {
-        sendResponse({ success: false, error: err.message });
-      }
-    })();
+  if (message.action === 'removeFollower') {
+    removeFollower(message.userId).then(sendResponse);
     return true;
   }
 
-  if (message.type === "getNonFollowers") {
+  if (message.action === 'scanProfile') {
     (async () => {
       try {
-        const url = window.location.href;
-        const usernameMatch = url.match(/instagram\.com\/([^/?]+)/);
-        const username = usernameMatch ? usernameMatch[1] : null;
+        const parts = window.location.pathname.split('/').filter(Boolean);
+        const currentPathUsername = parts[0] || '';
+        let username = (message.username || currentPathUsername || '').trim().replace(/^@/, '');
 
-        if (!username) {
-          sendResponse({ error: "Not on a profile page." });
+        const reserved = new Set(['explore', 'reels', 'stories', 'direct', 'p', 'reel', 'accounts', 'developer', 'about', 'legal', 'home', 'api', 'graphql', 'emails']);
+        if (!username || reserved.has(username.toLowerCase())) {
+          sendResponse({ success: false, error: 'Please enter a valid Instagram @username or navigate to a profile page.' });
           return;
         }
 
-        let followers = [];
-        let followings = [];
+        // Fetch Profile Details & Counts
+        const profile = await fetchProfileData(username);
 
-        // First try topsearch
-        let userId = null;
-        try {
-          const userQueryRes = await fetch(
-            `https://www.instagram.com/web/search/topsearch/?query=${username}`
-          );
-          const userQueryJson = await userQueryRes.json();
-          const user = userQueryJson.users.find(u => u.user.username === username);
-          userId = user?.user?.pk || null;
-        } catch (e) {
-          console.warn("Topsearch failed:", e);
-        }
+        // Check if target is a private account not followed by viewer
+        const isRestrictedPrivate = Boolean(
+          profile.is_private &&
+          !profile.isOwnProfile &&
+          profile.friendship_status?.following !== true
+        );
 
-        // If topsearch fails, fallback to scraping profile_id from HTML
-        if (!userId) {
-          const html = document.documentElement.innerHTML;
-          const match = html.match(/"profile_id":"(\d+)"/);
-          if (match) {
-            userId = match[1];
-          }
-        }
-
-        if (!userId) {
-          sendResponse({ error: "User ID not found." });
+        if (isRestrictedPrivate) {
+          sendResponse({
+            success: true,
+            isRestrictedPrivate: true,
+            profile
+          });
           return;
         }
 
-        const sendProgress = (progress) => {
+        // Notify UI that scan progress is starting
+        const sendProgress = (p) => {
           try {
-            chrome.runtime.sendMessage({ action: 'progress', ...progress }, () => {
-              // Suppress potential unhandled receiving end errors
+            chrome.runtime.sendMessage({ action: 'scan_progress', ...p }, () => {
               chrome.runtime.lastError;
             });
-          } catch (e) {
-            // Suppress error if extension context was reloaded
-          }
+          } catch (e) {}
         };
 
-        const getProfileCounts = () => {
-          let followerCount = 0;
-          let followingCount = 0;
+        sendProgress({
+          followingFetched: 0,
+          followingTotal: profile.following_count,
+          followingDone: false,
+          followersFetched: 0,
+          followersTotal: profile.follower_count,
+          followersDone: false
+        });
 
-          try {
-            const metaDesc = document.querySelector('meta[name="description"]')?.getAttribute('content') ||
-                             document.querySelector('meta[property="og:description"]')?.getAttribute('content') || '';
-            const match = metaDesc.match(/([0-9.,kKmM]+)\s+Followers,\s+([0-9.,kKmM]+)\s+Following/i);
-            if (match) {
-              const parseCount = (str) => {
-                if (!str) return 0;
-                let s = str.trim().toLowerCase().replace(/,/g, '');
-                if (s.endsWith('k')) return Math.round(parseFloat(s) * 1000);
-                if (s.endsWith('m')) return Math.round(parseFloat(s) * 1000000);
-                return parseInt(s, 10) || 0;
-              };
-              followerCount = parseCount(match[1]);
-              followingCount = parseCount(match[2]);
-            }
-          } catch (e) {
-            console.warn("Error parsing profile counts from meta:", e);
-          }
+        // Parallel streams for following and followers
+        let curFollowingCount = 0;
+        let curFollowersCount = 0;
+        let isFollowingDone = false;
+        let isFollowersDone = false;
 
-          if (!followerCount || !followingCount) {
-            try {
-              const links = document.querySelectorAll('header a[href*="/followers"], header a[href*="/following"]');
-              links.forEach(link => {
-                const href = link.getAttribute('href') || '';
-                const titleSpan = link.querySelector('[title]');
-                const text = titleSpan?.getAttribute('title') || link.innerText || '';
-                const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
-                if (num) {
-                  if (href.includes('/followers')) followerCount = num;
-                  if (href.includes('/following')) followingCount = num;
-                }
-              });
-            } catch (e) {
-              console.warn("Error parsing profile counts from header:", e);
-            }
-          }
-
-          if (!followerCount || !followingCount) {
-            try {
-              const scripts = document.querySelectorAll('script');
-              for (const s of scripts) {
-                const txt = s.textContent;
-                if (!txt) continue;
-                if (!followerCount) {
-                  const m1 = txt.match(/"edge_followed_by":\{"count":(\d+)\}/) || txt.match(/"follower_count":(\d+)/);
-                  if (m1) followerCount = parseInt(m1[1], 10);
-                }
-                if (!followingCount) {
-                  const m2 = txt.match(/"edge_follow":\{"count":(\d+)\}/) || txt.match(/"following_count":(\d+)/);
-                  if (m2) followingCount = parseInt(m2[1], 10);
-                }
-                if (followerCount && followingCount) break;
-              }
-            } catch (e) {
-              console.warn("Error parsing profile counts from scripts:", e);
-            }
-          }
-
-          return { followerCount, followingCount };
-        };
-
-        const viewerIdMatch = document.cookie.match(/ds_user_id=([^;]+)/);
-        const viewerUserId = viewerIdMatch ? viewerIdMatch[1] : null;
-        const isOwnProfile = Boolean(userId && viewerUserId && String(userId) === String(viewerUserId));
-
-        const fetchFriendshipStatuses = async (userIds) => {
-          if (!userIds || userIds.length === 0) return {};
-
-          const csrfToken = getCsrfToken();
-          const fbDtsg = getFbDtsg() || 'NAfywlYPQ_nTNwGTIwXcJUTPrmFMpOZf3n19xp-4cwwI5n8-NsGQnmA:17853828322093762:1787994042';
-          const jazoest = getJazoest(fbDtsg);
-
-          const baseHeaders = {
-            'X-CSRFToken': csrfToken || '',
-            'X-IG-App-ID': '936619743392459',
-            'X-ASBD-ID': '359341',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/x-www-form-urlencoded'
-          };
-
-          const results = {};
-          const chunkSize = 50;
-          const chunks = [];
-          for (let i = 0; i < userIds.length; i += chunkSize) {
-            chunks.push(userIds.slice(i, i + chunkSize));
-          }
-
-          await Promise.all(chunks.map(async (chunk) => {
-            try {
-              const postBody = new URLSearchParams();
-              postBody.append('user_ids', chunk.join(','));
-              if (jazoest) postBody.append('jazoest', jazoest);
-              if (fbDtsg) postBody.append('fb_dtsg', fbDtsg);
-
-              const res = await fetch('https://www.instagram.com/api/v1/friendships/show_many/', {
-                method: 'POST',
-                headers: baseHeaders,
-                body: postBody.toString(),
-                credentials: 'include'
-              });
-
-              if (res.ok) {
-                const data = await res.json().catch(() => null);
-                if (data?.friendship_statuses) {
-                  Object.assign(results, data.friendship_statuses);
-                }
-              } else {
-                console.warn(`show_many returned HTTP status ${res.status}`);
-              }
-            } catch (e) {
-              console.warn("show_many batch check failed:", e);
-            }
-          }));
-
-          return results;
-        };
-
-        const fetchFollowersGraphQL = async (userId, onProgress, totalTarget = 0) => {
-          let followers = [];
-          let after = null;
-          let has_next = true;
-          let totalFetched = 0;
-          let totalCount = totalTarget;
-
-          while (has_next) {
-            const res = await fetch(
-              `https://www.instagram.com/graphql/query/?query_hash=c76146de99bb02f6415203be841dd25a&variables=` +
-              encodeURIComponent(JSON.stringify({
-                id: userId,
-                first: 100,
-                after: after,
-              }))
-            );
-            const data = await res.json();
-            has_next = data?.data?.user?.edge_followed_by?.page_info?.has_next_page;
-            after = data?.data?.user?.edge_followed_by?.page_info?.end_cursor;
-
-            if (totalCount === 0 && data?.data?.user?.edge_followed_by?.count) {
-              totalCount = data.data.user.edge_followed_by.count;
-            }
-
-            const newFollowers = (data?.data?.user?.edge_followed_by?.edges || []).map(({ node }) => ({
-              id: node.id,
-              username: node.username,
-              full_name: node.full_name,
-              profile_pic_url: node.profile_pic_url,
-              profile_pic_url_hd: node.profile_pic_url_hd,
-            }));
-            followers = followers.concat(newFollowers);
-            totalFetched += newFollowers.length;
-
-            if (onProgress) {
-              onProgress({ type: 'followers', fetched: totalFetched, total: totalCount });
-            }
-            if (newFollowers.length === 0) break;
-          }
-          return followers;
-        };
-
-        const fetchFollowingsGraphQL = async (userId, onProgress, totalTarget = 0) => {
-          let followings = [];
-          let after = null;
-          let has_next = true;
-          let totalFetched = 0;
-          let totalCount = totalTarget;
-
-          while (has_next) {
-            const res = await fetch(
-              `https://www.instagram.com/graphql/query/?query_hash=d04b0a864b4b54837c0d870b0e77e076&variables=` +
-              encodeURIComponent(JSON.stringify({
-                id: userId,
-                first: 100,
-                after: after,
-              }))
-            );
-            const data = await res.json();
-            has_next = data?.data?.user?.edge_follow?.page_info?.has_next_page;
-            after = data?.data?.user?.edge_follow?.page_info?.end_cursor;
-
-            if (totalCount === 0 && data?.data?.user?.edge_follow?.count) {
-              totalCount = data.data.user.edge_follow.count;
-            }
-
-            const newFollowings = (data?.data?.user?.edge_follow?.edges || []).map(({ node }) => ({
-              id: node.id,
-              username: node.username,
-              full_name: node.full_name,
-              profile_pic_url: node.profile_pic_url,
-              profile_pic_url_hd: node.profile_pic_url_hd,
-            }));
-            followings = followings.concat(newFollowings);
-            totalFetched += newFollowings.length;
-
-            if (onProgress) {
-              onProgress({ type: 'followings', fetched: totalFetched, total: totalCount });
-            }
-            if (newFollowings.length === 0) break;
-          }
-          return followings;
-        };
-
-        // Fetch followers using modern v1 REST API with per-batch show_many enrichment
-        const fetchFollowers = async (userId, onProgress, totalTarget = 0) => {
-          let followers = [];
-          let nextMaxId = null;
-          let hasMore = true;
-          let totalFetched = 0;
-          let totalCount = totalTarget;
-
-          const csrfToken = getCsrfToken();
-          const baseHeaders = {
-            'X-CSRFToken': csrfToken || '',
-            'X-IG-App-ID': '936619743392459',
-            'X-ASBD-ID': '359341',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': '*/*'
-          };
-
-          const pageSize = 48;
-
-          // Emit initial progress immediately so the parallel progress bar displays right away
-          if (onProgress) {
-            onProgress({
-              type: 'followers',
-              fetched: 0,
-              total: totalCount
+        const [followers, followings] = await Promise.all([
+          fetchFriendshipStream('followers', profile.pk, (fetched, done) => {
+            curFollowersCount = fetched;
+            isFollowersDone = done;
+            sendProgress({
+              followingFetched: curFollowingCount,
+              followingTotal: profile.following_count,
+              followingDone: isFollowingDone,
+              followersFetched: curFollowersCount,
+              followersTotal: profile.follower_count,
+              followersDone: isFollowersDone
             });
-          }
-
-          while (hasMore) {
-            let url = `https://www.instagram.com/api/v1/friendships/${userId}/followers/?count=${pageSize}`;
-            if (nextMaxId) {
-              url += `&max_id=${encodeURIComponent(nextMaxId)}`;
-            }
-            url += `&search_surface=follow_list_page`;
-
-            let data = null;
-            try {
-              const res = await fetch(url, {
-                method: 'GET',
-                headers: baseHeaders,
-                credentials: 'include'
-              });
-              if (res.ok) {
-                data = await res.json();
-              } else {
-                console.warn(`v1 followers fetch returned HTTP ${res.status}`);
-              }
-            } catch (err) {
-              console.warn("v1 followers fetch error:", err);
-            }
-
-            if (!data && followers.length === 0) {
-              console.warn("Falling back to GraphQL for followers...");
-              return fetchFollowersGraphQL(userId, onProgress, totalCount);
-            }
-
-            if (!data || !Array.isArray(data.users)) {
-              break;
-            }
-
-            hasMore = Boolean(data.has_more && data.next_max_id);
-            nextMaxId = data.next_max_id || null;
-
-            const newFollowers = data.users.map(user => ({
-              id: String(user.pk || user.pk_id || user.id || ''),
-              username: user.username,
-              full_name: user.full_name || '',
-              profile_pic_url: user.profile_pic_url || '',
-              profile_pic_url_hd: user.profile_pic_url || '',
-              is_private: Boolean(user.is_private),
-              is_verified: Boolean(user.is_verified)
-            }));
-
-            followers = followers.concat(newFollowers);
-            totalFetched += newFollowers.length;
-
-            if (onProgress) {
-              onProgress({
-                type: 'followers',
-                fetched: totalFetched,
-                total: totalCount || (hasMore ? totalFetched + pageSize : totalFetched)
-              });
-            }
-
-            if (newFollowers.length === 0) {
-              break;
-            }
-
-            if (hasMore) {
-              await new Promise(r => setTimeout(r, 15));
-            }
-          }
-
-          if (onProgress) {
-            onProgress({
-              type: 'followers',
-              fetched: totalFetched,
-              total: totalFetched,
-              done: true
+          }),
+          fetchFriendshipStream('following', profile.pk, (fetched, done) => {
+            curFollowingCount = fetched;
+            isFollowingDone = done;
+            sendProgress({
+              followingFetched: curFollowingCount,
+              followingTotal: profile.following_count,
+              followingDone: isFollowingDone,
+              followersFetched: curFollowersCount,
+              followersTotal: profile.follower_count,
+              followersDone: isFollowersDone
             });
-          }
-          return followers;
-        };
-
-        // Fetch followings using modern v1 REST API with GraphQL fallback
-        const fetchFollowings = async (userId, onProgress, totalTarget = 0) => {
-          let followings = [];
-          let nextMaxId = null;
-          let hasMore = true;
-          let totalFetched = 0;
-          let totalCount = totalTarget;
-
-          const csrfToken = getCsrfToken();
-          const baseHeaders = {
-            'X-CSRFToken': csrfToken || '',
-            'X-IG-App-ID': '936619743392459',
-            'X-ASBD-ID': '359341',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Accept': '*/*'
-          };
-
-          const pageSize = 48;
-
-          // Emit initial progress immediately so the parallel progress bar displays right away
-          if (onProgress) {
-            onProgress({
-              type: 'followings',
-              fetched: 0,
-              total: totalCount
-            });
-          }
-
-          while (hasMore) {
-            let url = `https://www.instagram.com/api/v1/friendships/${userId}/following/?count=${pageSize}&search_surface=follow_list_page`;
-            if (nextMaxId) {
-              url += `&max_id=${encodeURIComponent(nextMaxId)}`;
-            }
-
-            let data = null;
-            try {
-              const res = await fetch(url, {
-                method: 'GET',
-                headers: baseHeaders,
-                credentials: 'include'
-              });
-              if (res.ok) {
-                data = await res.json();
-              } else {
-                console.warn(`v1 following fetch returned HTTP ${res.status}`);
-              }
-            } catch (err) {
-              console.warn("v1 following fetch error:", err);
-            }
-
-            if (!data && followings.length === 0) {
-              console.warn("Falling back to GraphQL for following...");
-              return fetchFollowingsGraphQL(userId, onProgress, totalCount);
-            }
-
-            if (!data || !Array.isArray(data.users)) {
-              break;
-            }
-
-            hasMore = Boolean(data.has_more && data.next_max_id);
-            nextMaxId = data.next_max_id || null;
-
-            const newFollowings = data.users.map(user => ({
-              id: String(user.pk || user.pk_id || user.id || ''),
-              username: user.username,
-              full_name: user.full_name || '',
-              profile_pic_url: user.profile_pic_url || '',
-              profile_pic_url_hd: user.profile_pic_url || '',
-              is_private: Boolean(user.is_private),
-              is_verified: Boolean(user.is_verified)
-            }));
-
-            followings = followings.concat(newFollowings);
-            totalFetched += newFollowings.length;
-
-            if (onProgress) {
-              onProgress({
-                type: 'followings',
-                fetched: totalFetched,
-                total: totalCount || (hasMore ? totalFetched + pageSize : totalFetched)
-              });
-            }
-
-            if (newFollowings.length === 0) {
-              break;
-            }
-
-            if (hasMore) {
-              await new Promise(r => setTimeout(r, 15));
-            }
-          }
-
-          if (onProgress) {
-            onProgress({
-              type: 'followings',
-              fetched: totalFetched,
-              total: totalFetched,
-              done: true
-            });
-          }
-          return followings;
-        };
-
-        const { followerCount, followingCount } = getProfileCounts();
-
-        // Fetch followers and followings in parallel
-        const [fetchedFollowers, fetchedFollowings] = await Promise.all([
-          fetchFollowers(userId, sendProgress, followerCount),
-          fetchFollowings(userId, sendProgress, followingCount)
+          })
         ]);
 
-        followers = fetchedFollowers;
-        followings = fetchedFollowings;
-
-        const totalUsers = followers.length + followings.length;
-        
-        const attachImageDataUrls = (list) => {
-          return list.map(user => ({
-            ...user,
-            profile_pic_data_url: user.profile_pic_url_hd || user.profile_pic_url || ''
-          }));
-        };
-
-        let rawGhosts = [];
-        let rawFans = [];
-
-        if (totalUsers > 10000) {
-          const { notFollowingBack, youDontFollowBack } = await new Promise((resolve) => {
-            const worker = new Worker(chrome.runtime.getURL('worker.js'));
-            worker.onmessage = (e) => {
-              resolve(e.data);
-              worker.terminate();
-            };
-            worker.postMessage({ followers, followings });
-          });
-          rawGhosts = notFollowingBack || [];
-          rawFans = youDontFollowBack || [];
-        } else {
-          const followerUsernames = new Set(followers.map(f => (f.username || '').toLowerCase()));
-          rawGhosts = followings.filter(f => !followerUsernames.has((f.username || '').toLowerCase()));
-
-          const followingUsernames = new Set(followings.map(f => (f.username || '').toLowerCase()));
-          rawFans = followers.filter(f => !followingUsernames.has((f.username || '').toLowerCase()));
-        }
-
-        // Apply friendship status enrichment and filters targeted ONLY on candidate non-followers
-        if (isOwnProfile) {
-          const candidateIds = Array.from(new Set([
-            ...rawGhosts.map(u => u.id),
-            ...rawFans.map(u => u.id)
-          ].filter(Boolean)));
-
-          if (candidateIds.length > 0) {
-            const statuses = await fetchFriendshipStatuses(candidateIds);
-
-            // Enrich and filter fans ("You don't follow back")
-            rawFans = rawFans.filter(u => {
-              const st = statuses[u.id];
-              if (st) {
-                u.following = Boolean(st.following);
-                u.outgoing_request = Boolean(st.outgoing_request);
-                u.is_requested = Boolean(st.outgoing_request);
-                u.is_bestie = Boolean(st.is_bestie);
-                u.is_restricted = Boolean(st.is_restricted);
-                u.is_feed_favorite = Boolean(st.is_feed_favorite);
-                u.incoming_request = Boolean(st.incoming_request);
-                u.friendship_status = st;
-
-                // If show_many confirmed we actually follow them, remove from fans
-                if (st.following === true) return false;
-              }
-              return true;
-            });
-
-            // Enrich and filter ghosts ("Don't follow you back")
-            rawGhosts = rawGhosts.filter(u => {
-              const st = statuses[u.id];
-              if (st) {
-                u.following = Boolean(st.following);
-                u.outgoing_request = Boolean(st.outgoing_request);
-                u.is_requested = Boolean(st.outgoing_request);
-                u.is_bestie = Boolean(st.is_bestie);
-                u.is_restricted = Boolean(st.is_restricted);
-                u.is_feed_favorite = Boolean(st.is_feed_favorite);
-                u.incoming_request = Boolean(st.incoming_request);
-                u.friendship_status = st;
-
-                // If show_many confirmed we don't follow them and didn't request them, remove
-                if (st.following === false && !st.outgoing_request) return false;
-              }
-              return true;
-            });
-          }
-        }
-
-        const usersWithImages = attachImageDataUrls(rawGhosts);
-        const fansWithImages = attachImageDataUrls(rawFans);
-
-        chrome.runtime.sendMessage({
-          action: 'ghostedUsers',
-          users: usersWithImages,
-          fans: fansWithImages,
-          isOwnProfile
+        sendProgress({
+          followingFetched: followings.length,
+          followingTotal: profile.following_count,
+          followingDone: true,
+          followersFetched: followers.length,
+          followersTotal: profile.follower_count,
+          followersDone: true,
+          done: true
         });
-        
-        sendResponse({ nonFollowers: usersWithImages, fans: fansWithImages, username, isOwnProfile });
+
+        // Compute Universal Relationship Sets strictly by ID after fully collecting both lists
+        const getNormalizedId = (u) => String(u.id || u.pk || u.pk_id || u.strong_id__ || '').trim();
+
+        const followerIdSet = new Set(followers.map(getNormalizedId).filter(Boolean));
+        const followingIdSet = new Set(followings.map(getNormalizedId).filter(Boolean));
+
+        let notFollowingBack = [];
+        let fans = [];
+        let mutual = [];
+
+        if (profile.isOwnProfile) {
+          // --- OWN PROFILE SCENARIO ---
+          // show_many statuses authoritatively declare viewer's direct relationships
+          for (const u of followers) {
+            const id = getNormalizedId(u);
+            if (id && u.following === true) {
+              followingIdSet.add(id);
+              if (!followings.some(f => getNormalizedId(f) === id)) {
+                followings.push(u);
+              }
+            }
+          }
+          for (const u of followings) {
+            const id = getNormalizedId(u);
+            if (id && u.followed_by === true) {
+              followerIdSet.add(id);
+              if (!followers.some(f => getNormalizedId(f) === id)) {
+                followers.push(u);
+              }
+            }
+          }
+
+          // 1. Not following you: in followings, but doesn't follow back
+          notFollowingBack = followings.filter(u => {
+            const id = getNormalizedId(u);
+            return id && !followerIdSet.has(id) && u.followed_by !== true;
+          });
+
+          // 2. You don't follow back: in followers, but viewer does not follow them back
+          fans = followers.filter(u => {
+            const id = getNormalizedId(u);
+            return id && !followingIdSet.has(id) && u.following !== true;
+          });
+
+          // 3. Mutual: in followings AND in followers
+          mutual = followings.filter(u => {
+            const id = getNormalizedId(u);
+            return id && (followerIdSet.has(id) || u.followed_by === true);
+          });
+        } else {
+          // --- OTHER PERSON'S PROFILE SCENARIO ---
+          // Strictly compare THAT PERSON'S collected followings and followers lists by user ID:
+          // 1. Who doesn't follow THEM back: in their followings, but NOT in their followers
+          notFollowingBack = followings.filter(u => {
+            const id = getNormalizedId(u);
+            return id && !followerIdSet.has(id);
+          });
+
+          // 2. Who THEY don't follow back: in their followers, but NOT in their followings
+          fans = followers.filter(u => {
+            const id = getNormalizedId(u);
+            return id && !followingIdSet.has(id);
+          });
+
+          // 3. Mutual: in their followings AND in their followers
+          mutual = followings.filter(u => {
+            const id = getNormalizedId(u);
+            return id && followerIdSet.has(id);
+          });
+        }
+
+        sendResponse({
+          success: true,
+          isRestrictedPrivate: false,
+          profile,
+          notFollowingBack,
+          fans,
+          mutual,
+          followings,
+          followers
+        });
       } catch (err) {
-        sendResponse({ error: err.message });
+        sendResponse({ success: false, error: err.message || 'An error occurred while scanning profile.' });
       }
     })();
     return true;
   }
 });
+
+// Active URL & Profile Change Detection for SPA Navigation
+const RESERVED_URL_ROUTES = new Set([
+  'explore', 'reels', 'stories', 'direct', 'p', 'reel', 'accounts',
+  'developer', 'about', 'legal', 'home', 'api', 'graphql', 'emails'
+]);
+
+function getProfileFromCurrentPath() {
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  const path = parts[0] || '';
+  if (path && !RESERVED_URL_ROUTES.has(path.toLowerCase())) {
+    return path;
+  }
+  return null;
+}
+
+let lastBroadcastUrl = window.location.href;
+
+function notifyIfUrlChanged() {
+  if (window.location.href !== lastBroadcastUrl) {
+    lastBroadcastUrl = window.location.href;
+    const detectedUsername = getProfileFromCurrentPath();
+    try {
+      chrome.runtime.sendMessage({
+        action: 'profile_changed',
+        username: detectedUsername,
+        pathname: window.location.pathname,
+        url: window.location.href
+      }, () => {
+        chrome.runtime.lastError;
+      });
+    } catch (e) {}
+  }
+}
+
+// 1. Navigation API for instant in-page pushState / replaceState detection
+if (window.navigation) {
+  try {
+    window.navigation.addEventListener('currententrychange', notifyIfUrlChanged);
+  } catch (e) {}
+}
+
+// 2. Browser history popstate
+window.addEventListener('popstate', notifyIfUrlChanged);
+
+// 3. User interaction click listener with debounced checks
+document.addEventListener('click', () => {
+  setTimeout(notifyIfUrlChanged, 100);
+  setTimeout(notifyIfUrlChanged, 400);
+});
+
+// 4. Fallback interval
+setInterval(notifyIfUrlChanged, 300);

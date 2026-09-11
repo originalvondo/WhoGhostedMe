@@ -1,526 +1,969 @@
-<!-- popup.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="referrer" content="no-referrer" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
   <title>WhoGhostedMe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --ig-gradient: linear-gradient(135deg, #f09433, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+      --ig-blue: #0095f6;
+      --ig-blue-hover: #1877f2;
+      --ig-bestie: #00ba34;
+      --ig-bestie-bg: #e8f8ee;
+      --ig-danger: #ed4956;
+      --ig-danger-bg: #ffebe9;
+      --ig-gray-bg: #f9fafb;
+      --ig-border: #f0f0f0;
+      --ig-text: #111827;
+      --ig-subtext: #6b7280;
+    }
+
     * {
       box-sizing: border-box;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      padding: 20px 20px 28px;
-      width: 440px;
-      min-height: 380px;
-      max-height: 590px;
-      overflow-y: auto;
-      background-color: #fafafa;
-      color: #262626;
       margin: 0;
+      padding: 0;
     }
-    /* Sleek custom scrollbars */
-    ::-webkit-scrollbar {
-      width: 6px;
+
+    body {
+      width: 100%;
+      height: 100vh;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #ffffff;
+      color: var(--ig-text);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
     }
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #dbdbdb;
-      border-radius: 10px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #c7c7c7;
-    }
+
+    /* Top Navigation Header */
     .header {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-    .logo-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      filter: drop-shadow(0 2px 4px rgba(225, 48, 108, 0.25));
-    }
-    h1 {
-      font-size: 21px;
-      font-weight: 700;
-      text-align: center;
-      margin: 0;
-      color: #262626;
-      letter-spacing: -0.3px;
-    }
-    .status-wrapper {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 14px;
-    }
-    #status {
-      font-size: 13px;
-      font-weight: 500;
-      text-align: center;
-      color: #737373;
+      justify-content: space-between;
+      padding: 12px 16px;
       background: #ffffff;
-      border: 1px solid #ebebeb;
-      border-radius: 20px;
-      padding: 6px 14px;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-      display: inline-flex;
+      border-bottom: 1px solid var(--ig-border);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+      z-index: 30;
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
       align-items: center;
-      justify-content: center;
+      gap: 10px;
+    }
+    .ig-brand-logo {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      display: block;
+    }
+    .title-group h1 {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.4px;
+      color: #111827;
+      line-height: 1.2;
+    }
+    .title-group .active-profile-tag {
+      font-size: 12px;
+      color: #6b7280;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-block;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .title-group .active-profile-tag:hover {
+      color: var(--ig-blue);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
       gap: 6px;
     }
-    #status strong {
-      color: #262626;
-      font-weight: 600;
-    }
-    .error-notice {
-      background-color: #fef2f2;
-      border: 1px solid #fecaca;
-      color: #dc2626;
-      padding: 9px 14px;
-      border-radius: 10px;
-      font-size: 12.5px;
-      margin-bottom: 14px;
-      text-align: center;
-      line-height: 1.4;
-      font-weight: 500;
-      box-shadow: 0 1px 3px rgba(220, 38, 38, 0.08);
-    }
-    .progress-container {
-      margin-bottom: 16px;
+    .btn-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
       background: #ffffff;
-      padding: 12px 14px;
-      border-radius: 12px;
-      border: 1px solid #ebebeb;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-      display: none;
+      color: #4b5563;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
-    .progress-label {
-      font-size: 12px;
+    .btn-icon:hover {
+      background: var(--ig-gray-bg);
+      color: var(--ig-text);
+      border-color: #d1d5db;
+    }
+    .btn-icon svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    /* Scan Button */
+    .btn-scan {
+      padding: 7px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 9px;
+      background: var(--ig-blue);
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: all 0.15s;
+      font-family: inherit;
+      box-shadow: 0 2px 6px rgba(0, 149, 246, 0.25);
+    }
+    .btn-scan:hover:not(:disabled) {
+      background: var(--ig-blue-hover);
+    }
+    .btn-scan:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .btn-scan svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    /* Live Dual Progress Bar */
+    .progress-section {
+      padding: 14px 16px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--ig-border);
+      display: none;
+      flex-shrink: 0;
+    }
+    .progress-block {
+      display: flex;
+      flex-direction: column;
+    }
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 6px;
-      font-weight: 500;
-      color: #737373;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #374151;
+    }
+    .progress-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .progress-bar {
       height: 6px;
-      background: #f0f0f0;
-      border-radius: 4px;
+      background: #f3f4f6;
+      border-radius: 6px;
       overflow: hidden;
     }
     .progress-fill {
       height: 100%;
       width: 0%;
-      border-radius: 4px;
-      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 6px;
+      background: var(--ig-gradient);
+      transition: width 0.2s ease-out;
     }
-    .progress-fill.followers {
-      background: linear-gradient(90deg, #0095f6, #00c6ff);
+    .progress-fill-followers {
+      background: linear-gradient(90deg, #0095f6, #00ba34);
     }
-    .progress-fill.followings {
-      background: linear-gradient(90deg, #f09433, #dc2743, #bc1888);
-    }
-    .progress-text {
+    .progress-stats {
       font-size: 11px;
-      color: #8e8e8e;
-      margin-top: 3px;
-      text-align: right;
+      font-weight: 600;
+      color: #6b7280;
     }
-    ol, ul {
-      padding-left: 0;
-      list-style-type: none;
-      margin: 0 0 14px 0;
+    /* Summary Pill (Context Header) */
+    .summary-pill-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 12px 16px 6px;
+      background: #ffffff;
+      flex-shrink: 0;
     }
-    li {
-      margin-bottom: 10px;
+    .summary-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 20px;
+      padding: 6px 18px;
+      font-size: 13.5px;
+      color: #4b5563;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+      font-weight: 500;
     }
-    /* Instagram-style profile cards */
+    .summary-pill strong {
+      font-weight: 700;
+      color: #111827;
+    }
+
+    /* Segmented Tabs (Two-Line Layout) */
+    .tabs-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--ig-border);
+      flex-shrink: 0;
+    }
+    .tabs-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+    .tab-btn {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 9px 12px;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+      min-height: 40px;
+      text-align: left;
+      line-height: 1.25;
+      overflow: hidden;
+      white-space: normal;
+    }
+    .tab-btn:hover {
+      color: var(--ig-text);
+      background: #e5e7eb;
+    }
+    .tab-btn.active {
+      background: #ffffff;
+      color: #111827;
+      border-color: #d1d5db;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+      font-weight: 700;
+    }
+    .tab-label {
+      flex: 1;
+      display: block;
+      white-space: normal;
+      word-break: normal;
+      line-height: 1.25;
+    }
+    .tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 12px;
+      background: #e5e7eb;
+      color: #4b5563;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .tab-btn.active .tab-count {
+      background: #111827;
+      color: #ffffff;
+    }
+    .tab-btn[data-tab="notFollowingBack"].active .tab-count {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    .tab-btn[data-tab="fans"].active .tab-count {
+      background: #dbeafe;
+      color: #2563eb;
+    }
+
+    /* Secondary Controls (Filter Pills - Bigger & Green Close Friends) */
+    .controls-bar {
+      padding: 10px 14px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--ig-border);
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .filter-pills {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .filter-pills::-webkit-scrollbar {
+      display: none;
+    }
+    .pill-btn {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 16px;
+      border-radius: 20px;
+      border: 1px solid #e5e7eb;
+      background: #f3f4f6;
+      color: #374151;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+    .pill-btn svg {
+      width: 13px;
+      height: 13px;
+    }
+    .pill-btn:hover {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    .pill-btn.active {
+      background: #111827;
+      color: #ffffff;
+      border-color: #111827;
+    }
+    /* Close Friends Button (Green) */
+    .pill-btn.pill-bestie {
+      background: #e8f8ee;
+      color: #00ba34;
+      border-color: #bbf7d0;
+      font-weight: 700;
+    }
+    .pill-btn.pill-bestie:hover {
+      background: #d1fae5;
+      border-color: #86efac;
+      color: #00962b;
+    }
+    .pill-btn.pill-bestie.active {
+      background: #00ba34;
+      border-color: #00ba34;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 186, 52, 0.3);
+    }
+
+    /* List Container */
+    .list-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      background: #fafafa;
+    }
+    .list-container::-webkit-scrollbar {
+      width: 5px;
+    }
+    .list-container::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 4px;
+    }
+
+    /* User Card */
+    /* User Card (Spacious & Simplistic) */
     .user-card {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 13px 15px;
+      padding: 13px 16px;
       background: #ffffff;
-      border: 1px solid #ebebeb;
+      border: 1px solid #efefef;
       border-radius: 14px;
-      transition: border-color 0.2s ease;
+      margin-bottom: 10px;
+      transition: all 0.15s ease;
+      gap: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.015);
     }
     .user-card:hover {
-      border-color: #c13584;
+      border-color: #e0e0e0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
     }
-    .user-link {
+    .user-card-main {
       display: flex;
       align-items: center;
+      gap: 13px;
+      min-width: 0;
+      flex: 1;
       text-decoration: none;
       color: inherit;
-      flex: 1;
-      min-width: 0;
     }
-    .profile-pic {
+
+    /* Avatars (Prominent 48px circles) */
+    .avatar-wrapper {
+      position: relative;
       width: 48px;
       height: 48px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .avatar-wrapper.is-bestie {
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00ba34, #10b981);
+      padding: 2.5px;
+      box-shadow: 0 0 6px rgba(0, 186, 52, 0.35);
+    }
+    .avatar {
+      width: 100%;
+      height: 100%;
       border-radius: 50%;
       object-fit: cover;
-      display: block;
-      margin-right: 14px;
-      flex-shrink: 0;
-      border: 1px solid rgba(0, 0, 0, 0.08);
-      background-color: #efefef;
+      background: #f3f4f6;
+      border: 1px solid #f0f0f0;
     }
-    .user-info {
-      flex: 1;
-      min-width: 0;
+    .avatar-wrapper.is-bestie .avatar {
+      border: 2px solid #ffffff;
+    }
+
+    /* User Details (Clear, Bold, Simplistic Labels) */
+    .user-meta {
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      min-width: 0;
+      overflow: hidden;
     }
     .username-row {
       display: flex;
       align-items: center;
-      gap: 5px;
-    }
-    .username {
-      font-weight: 600;
-      font-size: 14px;
-      color: #262626;
-      text-decoration: none;
+      gap: 4px;
+      font-size: 14.5px;
+      font-weight: 700;
+      color: #1c1e21;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      display: inline-block;
-      transition: color 0.15s ease;
+      line-height: 1.3;
     }
-    .user-card:hover .username {
-      color: #c13584;
-    }
-    .external-icon {
-      opacity: 0;
-      translate: -2px 2px;
-      transition: opacity 0.2s ease, translate 0.2s ease;
-      color: #c13584;
-      flex-shrink: 0;
+    .verified-badge {
+      color: var(--ig-blue);
       display: inline-flex;
+      flex-shrink: 0;
     }
-    .user-card:hover .external-icon {
-      opacity: 1;
-      translate: 0px 0px;
+    .verified-badge svg {
+      width: 14px;
+      height: 14px;
     }
     .full-name {
       font-size: 12.5px;
       color: #737373;
-      margin-top: 3px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      display: block;
-      font-weight: 400;
+      margin-top: 2px;
+      line-height: 1.3;
     }
-    .user-badges {
+    .badges-row {
       display: flex;
-      flex-wrap: wrap;
+      align-items: center;
       gap: 4px;
       margin-top: 4px;
+      flex-wrap: wrap;
     }
     .badge {
-      display: inline-flex;
-      align-items: center;
       font-size: 10px;
       font-weight: 600;
-      padding: 1px 5px;
-      border-radius: 4px;
-      line-height: 14px;
-      letter-spacing: 0.2px;
-    }
-    .badge-bestie {
-      background: rgba(16, 185, 129, 0.12);
-      color: #059669;
-      border: 1px solid rgba(16, 185, 129, 0.25);
-    }
-    .badge-favorite {
-      background: rgba(236, 72, 153, 0.12);
-      color: #db2777;
-      border: 1px solid rgba(236, 72, 153, 0.25);
-    }
-    .badge-restricted {
-      background: rgba(107, 114, 128, 0.12);
-      color: #4b5563;
-      border: 1px solid rgba(107, 114, 128, 0.25);
-    }
-    .badge-incoming {
-      background: rgba(99, 102, 241, 0.12);
-      color: #4f46e5;
-      border: 1px solid rgba(99, 102, 241, 0.25);
-    }
-    .badge-requested {
-      background: rgba(245, 158, 11, 0.12);
-      color: #d97706;
-      border: 1px solid rgba(245, 158, 11, 0.25);
-    }
-    /* Tabs container */
-    .tabs-container {
-      display: flex;
-      background: #f0f0f0;
-      padding: 3px;
-      border-radius: 11px;
-      margin-bottom: 14px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      display: inline-flex;
+      align-items: center;
       gap: 3px;
     }
-    .tab-btn {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-      padding: 8px 6px;
-      border: none;
-      background: transparent;
-      color: #737373;
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 8px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background-color 0.18s ease, color 0.18s ease;
+    .badge-bestie {
+      background: var(--ig-bestie-bg);
+      color: var(--ig-bestie);
+      border: 1px solid #c2f0d1;
     }
-    .tab-btn:hover:not(.active) {
-      color: #262626;
+    .badge-private {
+      background: #f3f4f6;
+      color: #4b5563;
     }
-    .tab-btn.active {
-      background: #ffffff;
-      color: #262626;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    .badge-ghost {
+      background: #fff1f2;
+      color: #e11d48;
+      border: 1px solid #ffe4e6;
     }
-    .tab-badge {
-      font-size: 11px;
-      padding: 1px 7px;
-      border-radius: 10px;
-      background: rgba(0, 0, 0, 0.06);
-      color: #737373;
-      font-weight: 600;
+    .badge-req {
+      background: #f3e8ff;
+      color: #7e22ce;
+      border: 1px solid #e9d5ff;
     }
-    .tab-btn.active .tab-badge {
-      background: rgba(193, 53, 132, 0.12);
-      color: #c13584;
-    }
-    /* Action buttons container & buttons (Unfollow, Follow back, Remove) */
+
+    /* Actions Container & Buttons (Compact & Sleek) */
     .card-actions {
       display: flex;
       align-items: center;
       gap: 6px;
-      margin-left: 10px;
       flex-shrink: 0;
     }
-    .action-btn, .unfollow-btn, .follow-btn, .remove-btn {
-      width: auto;
-      min-width: 80px;
-      height: 32px;
-      padding: 0 12px;
-      border: 1px solid transparent;
-      border-radius: 8px;
-      cursor: pointer;
+    .btn-action {
       font-family: inherit;
-      font-size: 12.5px;
+      font-size: 12px;
       font-weight: 600;
-      flex-shrink: 0;
-      transition: background-color 0.15s ease,
-                  color 0.15s ease,
-                  border-color 0.15s ease;
+      padding: 5px 12px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      outline: none;
+      min-height: 29px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
     }
-    .unfollow-btn {
-      background-color: #efefef;
-      color: #262626;
-      min-width: 86px;
-    }
-    .unfollow-btn:hover:not(:disabled) {
-      background-color: #fee2e2;
-      color: #ed4956;
-      border-color: #fecaca;
-    }
-    .unfollow-btn.unfollowed {
-      background-color: #ffffff;
-      color: #737373;
-      border: 1px solid #dbdbdb;
-    }
-    .follow-btn {
-      background-color: #0095f6;
+    /* Follow / Follow Back */
+    .btn-follow {
+      background: #0095f6;
       color: #ffffff;
-      min-width: 88px;
+      border: none;
     }
-    .follow-btn:hover:not(:disabled) {
-      background-color: #1877f2;
+    .btn-follow:hover {
+      background: #1877f2;
     }
-    .follow-btn.followed {
-      background-color: #ffffff;
-      color: #737373;
-      border: 1px solid #dbdbdb;
+    /* Following -> Unfollow Hover State */
+    .btn-following {
+      background: #f0f2f5;
+      color: #1c1e21;
+      border: 1px solid #e4e6eb;
+      position: relative;
     }
-    .follow-btn.requested {
-      background-color: #efefef;
-      color: #262626;
-      border: 1px solid #dbdbdb;
-      min-width: 110px;
-      cursor: pointer;
-      transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-    }
-    .follow-btn.requested .btn-text-hover {
+    .btn-following .txt-unfollow {
       display: none;
     }
-    .follow-btn.requested:hover:not(:disabled):not(.loading) {
-      background-color: #fee2e2;
+    .btn-following:hover {
+      background: #ffebe9;
       color: #ed4956;
-      border-color: #fecaca;
+      border-color: #ffd0cc;
     }
-    .follow-btn.requested:hover:not(:disabled):not(.loading) .btn-text-default {
+    .btn-following:hover .txt-following {
       display: none;
     }
-    .follow-btn.requested:hover:not(:disabled):not(.loading) .btn-text-hover {
+    .btn-following:hover .txt-unfollow {
       display: inline;
     }
-    .remove-btn {
-      background-color: #efefef;
-      color: #262626;
-      min-width: 68px;
-    }
-    .remove-btn:hover:not(:disabled) {
-      background-color: #fee2e2;
-      color: #ed4956;
-      border-color: #fecaca;
-    }
-    .remove-btn.removed {
-      background-color: #ffffff;
+    /* Requested -> Cancel Hover State */
+    .btn-requested {
+      background: #f0f2f5;
       color: #737373;
-      border: 1px solid #dbdbdb;
+      border: 1px solid #e4e6eb;
+      position: relative;
     }
-    .action-btn.loading, .unfollow-btn.loading, .follow-btn.loading, .remove-btn.loading {
-      background-color: #efefef;
-      color: #737373;
-      cursor: wait;
+    .btn-requested .txt-cancel {
+      display: none;
     }
-    .action-btn.error, .unfollow-btn.error, .follow-btn.error, .remove-btn.error {
-      background-color: #fef2f2;
+    .btn-requested:hover {
+      background: #ffebe9;
       color: #ed4956;
-      border: 1px solid #fecaca;
-      cursor: pointer;
+      border-color: #ffd0cc;
     }
-    .unfollow-btn:disabled, .follow-btn:disabled, .remove-btn:disabled {
-      cursor: default;
+    .btn-requested:hover .txt-requested {
+      display: none;
     }
-    /* Main bottom button (Open in New Page) */
-    .bottom-wrapper {
-      margin-top: 16px;
-      width: 100%;
+    .btn-requested:hover .txt-cancel {
+      display: inline;
     }
-    button.main-btn {
-      display: block;
-      width: 100%;
-      margin: 0;
-      padding: 12px 16px;
-      border: none;
-      background-color: #c13584;
-      color: #ffffff;
-      border-radius: 10px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 13.5px;
+    /* Remove Follower Button */
+    .btn-remove-follower {
+      padding: 5px 10px;
+      font-size: 12px;
       font-weight: 600;
-      transition: background-color 0.2s ease;
+      border-radius: 7px;
+      background: #f0f2f5;
+      color: #1c1e21;
+      border: 1px solid #e4e6eb;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      min-height: 29px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: inherit;
     }
-    button.main-btn:hover {
-      background-color: #ad2e76;
+    .btn-remove-follower:hover {
+      background: #ffebe9;
+      color: #ed4956;
+      border-color: #ffd0cc;
     }
-    button.main-btn:disabled {
-      background-color: #e8c0d8;
-      cursor: not-allowed;
+
+    /* Start Screen & Welcome Card */
+    .start-screen {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: #fafafa;
     }
-    .bottom-gap {
-      height: 24px;
+    .start-card {
+      background: #ffffff;
+      border: 1px solid var(--ig-border);
+      border-radius: 16px;
+      padding: 32px 22px;
+      text-align: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+      max-width: 320px;
       width: 100%;
-      display: block;
     }
-    /* Spinner */
+    .start-logo {
+      width: 52px;
+      height: 52px;
+      border-radius: 15px;
+      background: var(--ig-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      margin: 0 auto 16px;
+      box-shadow: 0 4px 12px rgba(220, 39, 67, 0.28);
+    }
+    .start-logo svg {
+      width: 26px;
+      height: 26px;
+    }
+    .start-card h2 {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--ig-text);
+      margin-bottom: 6px;
+    }
+    .start-card p {
+      font-size: 12px;
+      color: var(--ig-subtext);
+      line-height: 1.4;
+      margin-bottom: 20px;
+    }
+
+    /* Private Restricted Profile Card */
+    .private-card {
+      padding: 24px 18px;
+      text-align: center;
+      background: #ffffff;
+      border-radius: 12px;
+      border: 1px solid var(--ig-border);
+      margin: 20px 14px;
+      display: none;
+    }
+    .private-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin: 0 auto 10px;
+      border: 2px solid var(--ig-border);
+    }
+    .private-card h3 {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--ig-text);
+      margin-bottom: 4px;
+    }
+    .private-card .private-bio {
+      font-size: 11.5px;
+      color: var(--ig-subtext);
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+    .private-stats {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 16px;
+    }
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .stat-val {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--ig-text);
+    }
+    .stat-lbl {
+      font-size: 10.5px;
+      color: var(--ig-subtext);
+      font-weight: 600;
+    }
+    .private-notice {
+      font-size: 11.5px;
+      color: #4b5563;
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 14px;
+    }
+
+    /* Notice & Empty States */
+    .notice-card {
+      padding: 30px 20px;
+      text-align: center;
+      background: #ffffff;
+      border-radius: 12px;
+      border: 1px solid var(--ig-border);
+      margin: 20px 14px;
+      display: none;
+    }
+    .notice-card h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--ig-text);
+      margin-bottom: 6px;
+    }
+    .notice-card p {
+      font-size: 12px;
+      color: var(--ig-subtext);
+      line-height: 1.4;
+      margin-bottom: 14px;
+    }
+    .btn-notice {
+      display: inline-block;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 8px;
+      background: #111827;
+      color: #ffffff;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 45px 15px;
+      color: var(--ig-subtext);
+    }
+    .empty-state-icon {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    .empty-state-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: #374151;
+      margin-bottom: 4px;
+    }
+    .empty-state-sub {
+      font-size: 11.5px;
+      color: #9ca3af;
+    }
+
+    /* Spinners */
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
     .spinner {
       display: inline-block;
-      vertical-align: middle;
-      margin-left: 5px;
-      width: 13px;
-      height: 13px;
-      border: 2px solid #dbdbdb;
-      border-top-color: #737373;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(220, 39, 67, 0.2);
+      border-top-color: #dc2743;
       border-radius: 50%;
-      animation: spin 0.6s linear infinite;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
     }
-    .empty-state {
-      text-align: center;
-      padding: 32px 10px;
-      color: #737373;
-      font-size: 14px;
-      background: #ffffff;
-      border-radius: 14px;
-      border: 1px solid #ebebeb;
+    .spinner-btn {
+      width: 11px;
+      height: 11px;
+      border: 2px solid rgba(0, 0, 0, 0.15);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
     }
   </style>
 </head>
 <body>
+  <!-- Top Navigation Header -->
   <div class="header">
-    <div class="logo-icon">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="2" y="2" width="20" height="20" rx="5" stroke="url(#ig-grad)" stroke-width="2"/>
-        <circle cx="12" cy="12" r="4.5" stroke="url(#ig-grad)" stroke-width="2"/>
-        <circle cx="18" cy="6" r="1.2" fill="url(#ig-grad)"/>
+    <div class="brand">
+      <svg class="ig-brand-logo" width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="ig-grad" x1="2" y1="22" x2="22" y2="2" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#f09433"/>
-            <stop offset="0.25" stop-color="#e6683c"/>
-            <stop offset="0.5" stop-color="#dc2743"/>
-            <stop offset="0.75" stop-color="#cc2366"/>
-            <stop offset="1" stop-color="#bc1888"/>
+          <linearGradient id="ig-app-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f09433"/>
+            <stop offset="25%" stop-color="#e6683c"/>
+            <stop offset="50%" stop-color="#dc2743"/>
+            <stop offset="75%" stop-color="#cc2366"/>
+            <stop offset="100%" stop-color="#bc1888"/>
           </linearGradient>
         </defs>
+        <rect width="24" height="24" rx="6.5" fill="url(#ig-app-grad)"/>
+        <rect x="5.2" y="5.2" width="13.6" height="13.6" rx="3.8" stroke="#ffffff" stroke-width="1.8" fill="none"/>
+        <circle cx="12" cy="12" r="3.2" stroke="#ffffff" stroke-width="1.8" fill="none"/>
+        <circle cx="15.8" cy="8.2" r="0.9" fill="#ffffff"/>
       </svg>
+      <div class="title-group">
+        <h1>WhoGhostedMe</h1>
+        <a id="activeProfileLink" class="active-profile-tag" href="#" target="_blank" rel="noopener noreferrer">Detecting profile...</a>
+      </div>
     </div>
-    <h1>WhoGhostedMe</h1>
+    <div class="header-actions">
+      <button id="scanBtn" class="btn-scan" title="Scan current profile">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        <span>Scan</span>
+      </button>
+    </div>
   </div>
-  <div class="status-wrapper">
-    <div id="status"></div>
+
+  <!-- Dynamic Summary Pill (like in the screenshot) -->
+  <div id="summaryPillWrap" class="summary-pill-wrap" style="display:none;">
+    <div id="summaryPill" class="summary-pill">
+      <span><strong>0</strong> people you don't follow back</span>
+    </div>
   </div>
-  <div id="errorNotice" class="error-notice" style="display:none;"></div>
-  
-  <div id="progressContainer" class="progress-container">
-    <div class="progress-label">Fetching followers... <span id="followersProgressText" class="progress-text">0 loaded</span></div>
-    <div class="progress-bar"><div id="followersProgress" class="progress-fill followers"></div></div>
-    
-    <div class="progress-label" style="margin-top: 10px;">Fetching following... <span id="followingsProgressText" class="progress-text">0 loaded</span></div>
-    <div class="progress-bar"><div id="followingsProgress" class="progress-fill followings"></div></div>
+
+  <!-- Initial Start Screen -->
+  <div id="startScreen" class="start-screen">
+    <div class="start-card">
+      <div class="start-logo" style="background: none; box-shadow: none;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="ig-app-grad-start" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f09433"/>
+              <stop offset="25%" stop-color="#e6683c"/>
+              <stop offset="50%" stop-color="#dc2743"/>
+              <stop offset="75%" stop-color="#cc2366"/>
+              <stop offset="100%" stop-color="#bc1888"/>
+            </linearGradient>
+          </defs>
+          <rect width="24" height="24" rx="6.5" fill="url(#ig-app-grad-start)"/>
+          <rect x="5.2" y="5.2" width="13.6" height="13.6" rx="3.8" stroke="#ffffff" stroke-width="1.8" fill="none"/>
+          <circle cx="12" cy="12" r="3.2" stroke="#ffffff" stroke-width="1.8" fill="none"/>
+          <circle cx="15.8" cy="8.2" r="0.9" fill="#ffffff"/>
+        </svg>
+      </div>
+      <h2>WhoGhostedMe</h2>
+      <p>Scan your Instagram profile to find who doesn't follow you back, track your fans, and manage your relationships.</p>
+      <button id="startScanBtn" class="btn-scan" style="width: 100%; padding: 10px 14px; font-size: 13px;">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        Scan Profile
+      </button>
+    </div>
   </div>
-  
-  <div class="tabs-container" id="tabsContainer" style="display:none;">
-    <button class="tab-btn active" id="tabGhosted" data-tab="ghosted">
-      <span id="tabGhostedLabel">Not following you</span>
-      <span class="tab-badge" id="ghostedCount">0</span>
-    </button>
-    <button class="tab-btn" id="tabFans" data-tab="fans">
-      <span id="tabFansLabel">You don't follow back</span>
-      <span class="tab-badge" id="fansCount">0</span>
-    </button>
+
+  <!-- Live Dual Progress Section -->
+  <div id="progressSection" class="progress-section">
+    <!-- Following Progress -->
+    <div class="progress-block">
+      <div class="progress-header">
+        <div class="progress-title-wrap">
+          <span id="followingSpinner" class="spinner"></span>
+          <span>Following</span>
+        </div>
+        <span id="followingCountText" class="progress-stats">0 / 0 (0%)</span>
+      </div>
+      <div class="progress-bar">
+        <div id="followingProgressFill" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Followers Progress -->
+    <div class="progress-block" style="margin-top: 10px;">
+      <div class="progress-header">
+        <div class="progress-title-wrap">
+          <span id="followersSpinner" class="spinner"></span>
+          <span>Followers</span>
+        </div>
+        <span id="followersCountText" class="progress-stats">0 / 0 (0%)</span>
+      </div>
+      <div class="progress-bar">
+        <div id="followersProgressFill" class="progress-fill progress-fill-followers"></div>
+      </div>
+    </div>
   </div>
-  
-  <ol id="results"></ol>
-  <div class="bottom-wrapper" id="bottomWrapper" style="display:none;">
-    <button id="open" class="main-btn">Open in New Page</button>
-    <div class="bottom-gap"></div>
+
+  <!-- Private Restricted Profile Card -->
+  <div id="privateCard" class="private-card">
+    <img id="privateAvatar" class="private-avatar" src="" alt="Avatar" referrerpolicy="no-referrer">
+    <h3 id="privateName">@username</h3>
+    <p id="privateBio" class="private-bio"></p>
+    <div class="private-stats">
+      <div class="stat-item">
+        <span id="privateFollowingCount" class="stat-val">0</span>
+        <span class="stat-lbl">Following</span>
+      </div>
+      <div class="stat-item">
+        <span id="privateFollowerCount" class="stat-val">0</span>
+        <span class="stat-lbl">Followers</span>
+      </div>
+    </div>
+    <div id="privateNoticeText" class="private-notice">This account is private. Follow this account to view their relationships.</div>
+    <button id="privateActionBtn" class="btn-action btn-follow">Follow</button>
   </div>
+
+  <!-- Segmented Result Tabs (Two-Line Layout) -->
+  <div id="tabsNav" class="tabs-nav" style="display:none;">
+    <div class="tabs-row">
+      <button class="tab-btn active" data-tab="notFollowingBack">
+        <span class="tab-label">Not following you</span>
+        <span id="countNotFollowingBack" class="tab-count">0</span>
+      </button>
+      <button class="tab-btn" data-tab="fans">
+        <span class="tab-label">You don't follow back</span>
+        <span id="countFans" class="tab-count">0</span>
+      </button>
+    </div>
+    <div class="tabs-row">
+      <button class="tab-btn" data-tab="followings">
+        <span class="tab-label">Following</span>
+        <span id="countFollowings" class="tab-count">0</span>
+      </button>
+      <button class="tab-btn" data-tab="followers">
+        <span class="tab-label">Followers</span>
+        <span id="countFollowers" class="tab-count">0</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- In-List Filter Controls -->
+  <div id="controlsBar" class="controls-bar" style="display:none;">
+    <div class="filter-pills">
+      <button class="pill-btn active" data-filter="all">All</button>
+      <button class="pill-btn pill-bestie" data-filter="besties">
+        <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Close Friends
+      </button>
+      <button class="pill-btn" data-filter="private">
+        <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+        Private
+      </button>
+    </div>
+  </div>
+
+  <!-- User Cards List Container -->
+  <div id="listContainer" class="list-container" style="display:none;"></div>
+
+  <!-- Notice / Error Screen -->
+  <div id="noticeCard" class="notice-card">
+    <h3 id="noticeTitle">Notice</h3>
+    <p id="noticeDesc">Please open an Instagram tab to continue.</p>
+    <button id="noticeBtn" class="btn-notice">Open Instagram</button>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>
