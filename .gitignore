@@ -1,0 +1,8 @@
+# Private analysis documentation
+INSTAGRAM_API_ANALYSIS.md
+
+# OS & temporary files
+.DS_Store
+Thumbs.db
+*.log
+*.har
