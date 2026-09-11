@@ -65,44 +65,12 @@
       flex-shrink: 0;
       display: block;
     }
-    .title-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
     .title-group h1 {
-      font-size: 17px;
+      font-size: 18px;
       font-weight: 800;
       letter-spacing: -0.4px;
       color: #111827;
       line-height: 1.2;
-    }
-    .creator-badge {
-      font-size: 10px;
-      font-weight: 600;
-      color: #6b7280;
-      background: #f3f4f6;
-      border: 1px solid #e5e7eb;
-      padding: 1.5px 6px;
-      border-radius: 10px;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      transition: all 0.15s ease;
-      line-height: 1.2;
-    }
-    .creator-badge:hover {
-      background: #eff6ff;
-      border-color: #bfdbfe;
-      color: #0095f6;
-    }
-    .creator-badge svg {
-      opacity: 0.6;
-    }
-    .creator-badge:hover svg {
-      opacity: 1;
-      stroke: #0095f6;
     }
     .title-group .active-profile-tag {
       font-size: 12px;
@@ -116,7 +84,7 @@
       white-space: nowrap;
     }
     .start-creator-credit {
-      font-size: 12px;
+      font-size: 12.5px;
       color: #6b7280;
       margin-top: -6px;
       margin-bottom: 12px;
@@ -131,6 +99,64 @@
     }
     .start-creator-credit a:hover {
       text-decoration: underline;
+    }
+
+    /* Persistent Bottom Creator Footer */
+    .app-footer {
+      flex-shrink: 0;
+      padding: 10px 14px;
+      background: #ffffff;
+      border-top: 1px solid #efefef;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 25;
+      box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.02);
+    }
+    .footer-creator-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      text-decoration: none;
+      font-size: 12.5px;
+      color: #374151;
+      padding: 7px 16px;
+      border-radius: 20px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      transition: all 0.18s ease;
+    }
+    .footer-creator-link:hover {
+      background: #f0f7ff;
+      border-color: #93c5fd;
+      color: #0095f6;
+      box-shadow: 0 2px 8px rgba(0, 149, 246, 0.12);
+      transform: translateY(-1px);
+    }
+    .footer-creator-link strong {
+      color: #111827;
+      font-weight: 700;
+    }
+    .footer-creator-link:hover strong {
+      color: #0095f6;
+    }
+    .footer-handle {
+      color: #0095f6;
+      font-weight: 600;
+    }
+    .footer-ig-icon {
+      width: 17px;
+      height: 17px;
+      flex-shrink: 0;
+      display: block;
+    }
+    .footer-arrow {
+      stroke: #9ca3af;
+      transition: stroke 0.15s ease, transform 0.15s ease;
+    }
+    .footer-creator-link:hover .footer-arrow {
+      stroke: #0095f6;
+      transform: translate(1px, -1px);
     }
     .title-group .active-profile-tag:hover {
       color: var(--ig-blue);
@@ -1229,17 +1255,7 @@
         <circle cx="15.8" cy="8.2" r="0.9" fill="#ffffff"/>
       </svg>
       <div class="title-group">
-        <div class="title-row">
-          <h1>WhoGhostedMe</h1>
-          <a class="creator-badge" href="https://instagram.com/originalvondo" target="_blank" rel="noopener noreferrer" title="Created by Tanvirul (@originalvondo)">
-            <span>by Tanvirul</span>
-            <svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-              <polyline points="15 3 21 3 21 9"></polyline>
-              <line x1="10" y1="14" x2="21" y2="3"></line>
-            </svg>
-          </a>
-        </div>
+        <h1>WhoGhostedMe</h1>
         <a id="activeProfileLink" class="active-profile-tag" href="#" target="_blank" rel="noopener noreferrer">Detecting profile...</a>
       </div>
     </div>
@@ -1468,6 +1484,33 @@
     <p id="noticeDesc">Please open an Instagram tab to continue.</p>
     <button id="noticeBtn" class="btn-notice">Open Instagram</button>
   </div>
+
+  <!-- Persistent Bottom Creator Footer -->
+  <footer class="app-footer">
+    <a href="https://instagram.com/originalvondo" target="_blank" rel="noopener noreferrer" class="footer-creator-link" title="Follow Tanvirul on Instagram">
+      <svg class="footer-ig-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="ig-grad-footer" x1="0%" y1="100%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f09433"/>
+            <stop offset="25%" stop-color="#e6683c"/>
+            <stop offset="50%" stop-color="#dc2743"/>
+            <stop offset="75%" stop-color="#cc2366"/>
+            <stop offset="100%" stop-color="#bc1888"/>
+          </linearGradient>
+        </defs>
+        <rect width="24" height="24" rx="6.5" fill="url(#ig-grad-footer)"/>
+        <rect x="5.2" y="5.2" width="13.6" height="13.6" rx="3.8" stroke="#ffffff" stroke-width="1.8" fill="none"/>
+        <circle cx="12" cy="12" r="3.2" stroke="#ffffff" stroke-width="1.8" fill="none"/>
+        <circle cx="15.8" cy="8.2" r="0.9" fill="#ffffff"/>
+      </svg>
+      <span>Created by <strong>Tanvirul</strong> (<span class="footer-handle">@originalvondo</span>)</span>
+      <svg class="footer-arrow" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <line x1="10" y1="14" x2="21" y2="3"></line>
+      </svg>
+    </a>
+  </footer>
 
   <script src="popup.js"></script>
 </body>
